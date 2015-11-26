@@ -16,8 +16,10 @@ REDIS_DB = rq.REDIS_DB
 
 def response(soup, spider, **kwargs):
     """do some work here"""
+    logging.info('response...')
     urls = []
     for a in soup.find_all('a'):
-        urls.append(a.get('href'))
-    logging.warning(urls)
+        if a.get('href') and 'http://snapdish.co' in a.get('href'):
+            urls.append(a.get('href'))
+    logging.info(urls)
     return urls
