@@ -1,0 +1,26 @@
+{% extends "../layouts/base.html" %}
+{% block title %}ホーム{% end %}
+{% block body %}
+<div class="container">
+	<div class="row mt">
+        {% if not me.first_name and not me.last_name %}
+        <div class="row">    
+            <br>
+            <div class="alert alert-warning alert-dismissible" role="alert">
+                <button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span><span class="sr-only">閉じる</span></button>
+                名前の設定を行ってください <a href="/setting">設定ページはこちら</a>
+            </div>
+        </div>
+        {% end %}
+
+        <div class="row centered">
+            <br>
+            <button type="button" class="btn btn-default btn-lg">
+                <span class="glyphicon glyphicon-plus"></span> ほげほげアクション
+            </button>
+        </div>
+
+        <!--/stories-->
+    </div><!-- /row -->
+</div><!-- /container -->
+{% end %}

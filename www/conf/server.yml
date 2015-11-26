@@ -1,0 +1,48 @@
+common:
+    version: 0.0.0
+    cookie_secret: 4xEKpLr0Bx60XV5l3GVNF78O7OlRbARK9K32X4H54c62Fd7WDeFvzuaeFc1ijD0mhMXq5DQu66C8J5y5o8FIUCT3u98Jp4T8
+    sentry: http://8159afabfbee4f91873eef90658c15e9:b8fe4ec8b543486aadf171ec1a11b3a3@sentry.local/2
+    xheaders: True
+    login_url: /login
+    server_apps_conf_path: ../www/conf/apps.yml
+    template_path: ../www/templates
+    static_path: ../www/static
+    logging_path: ../www/log/tornado.log
+    xsrf_cookies: True
+    compiled_template_cache: False
+    static_hash_cache: False
+    serve_traceback: True
+    debug: True
+    autoescape: null
+    autoreload: True
+    token_name: _tk_development
+    token_email_name: _em_development
+    current_user_cookie_name: authenticated_user_development
+
+development:
+    db:
+        host: localhost
+        name: mysite_development
+        port: 27017
+
+testing:
+    db:
+        host: localhost
+        name: mysite_testing
+        port: 27017
+    token_name: _tk_testing
+    token_email_name: _em_testing
+    current_user_cookie_name: authenticated_user_testing
+
+production:
+    db:
+        host: localhost
+        name: mysite_production
+        port: 27017
+    token_name: _tk
+    token_email_name: _em
+    current_user_cookie_name: authenticated_user_production
+    compiled_template_cache: True
+    static_hash_cache: True
+    debug: False
+    autoreload: False

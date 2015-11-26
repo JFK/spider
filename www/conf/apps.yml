@@ -1,0 +1,33 @@
+common:
+    main:
+        worker_processes: 1
+        port: 8000
+        ui_modules:
+            account: 
+                Errors: AccountErrorsModule
+        handlers:
+            top:
+                /: TopHandler
+            account:
+                /signup: SignupHandler
+                /password: PasswordHandler
+                /login: LoginHandler
+                /logout: LogoutHandler
+                /setting: SettingHandler
+            home:
+                /home: HomeHandler
+
+development:
+    main:
+        worker_processes: 1
+        port: 8000
+    
+testing:
+    main:
+        worker_processes: 1
+        port: 8000
+
+production:
+    main:
+        worker_processes: 10
+        port: 8000

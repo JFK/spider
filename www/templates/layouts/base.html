@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    {% block head %}{% include "parts/head.html" %}{% end %}
+  </head>
+  <body>
+    {% block navibar %}{% include "parts/navibar.html" %}{% end %}
+    {% block body %}{% end %}
+    {% block footer %}{% include "parts/footer.html" %}{% end %}
+    <!-- Bootstrap core JavaScript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
+    <script src="{{static_url("assets/js/bootstrap.min.js")}}"></script>
+    {% block js %}{% end %}
+  </body>
+</html>

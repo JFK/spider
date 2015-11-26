@@ -1,0 +1,38 @@
+{% extends "../layouts/base.html" %}
+{% block title %}アカウント設定{% end %}
+{% block css %}<link href="{{static_url("assets/css/form.css")}}" rel="stylesheet">{% end %}
+{% block head_js %}
+<!-- Just for debugging purposes. Don't actually copy these 2 lines! -->
+<!--[if lt IE 9]><script src="{{static_url("assets/js/ie8-responsive-file-warning.js")}}"></script><![endif]-->
+<script src="{{static_url("assets/js/ie-emulation-modes-warning.js")}}"></script>
+<!-- IE10 viewport hack for Surface/desktop Windows 8 bug -->
+<script src="{{static_url("assets/js/ie10-viewport-bug-workaround.js")}}"></script>
+{% end %}
+{% block body %}
+<div id="headerwrap" class="max-height">
+    <div class="container">
+        <div class="row mt">
+                <form class="form-form" role="form" action="/setting" method="post">
+                <h1>アカウント設定</h1>
+                {% module Errors(errors) %}
+                {% if success %}
+                <div class="alert alert-success alert-dismissible" role="alert">
+                    <button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span><span class="sr-only">閉じる</span></button>
+                    更新完了しました
+                </div>
+                {% end %}
+                <div class="form-group">
+                <input type="email" class="form-control" name="email" value="{{ me.email }}"  placeholder="メールアドレスを入力" required autofocus>
+                <input type="password" name="password" class="form-control" placeholder="パスワードを入力">
+                </div>
+                <div class="form-group">
+                <input type="last_name" class="form-control" name="last_name" value="{% if me.last_name %}{{ me.last_name }}{% end %}"  placeholder="姓">
+                <input type="first_name" class="form-control" name="first_name" value="{% if me.first_name %}{{ me.first_name }}{% end %}"  placeholder="名">
+                </div>
+                <button type="submit" class="btn btn-warning btn-lg">更新</button>
+                {% raw xsrf_form_html() %}
+                </form>					
+        </div><!-- /row -->
+    </div><!-- /container -->
+</div><!-- /headerwrap -->
+{% end %}

@@ -1,0 +1,18 @@
+<div class="container">
+    <hr>
+    <div class="row centered">
+        <div class="col-lg-6 col-lg-offset-3">
+            <form class="form-inline" role="form" action="/signup" method="post">
+                <div class="form-group">
+                    <input type="email" class="form-control" name="email" placeholder="メールアドレスを入力">
+                </div>
+                <button type="submit" class="btn btn-warning btn-lg">登録</button>
+                {% raw xsrf_form_html() %}
+            </form>					
+        </div>
+        <div class="col-lg-3"></div>
+    </div><!-- /row -->
+    <hr>
+</div><!-- /container -->
+
+
