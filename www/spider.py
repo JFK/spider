@@ -19,6 +19,11 @@ import importlib
 from pymongo import MongoClient, DESCENDING
 from bson.objectid import ObjectId
 from datetime import datetime, timedelta
+import projects
+
+
+logger = logging.getLogger('spider')
+logger.setLevel(logging.DEBUG)
 
 
 USERAGENTS = [
@@ -33,8 +38,8 @@ USERAGENTS = [
 ]
 
 
-def enqueue(f, urls, response, referer=None, tag=0, name='normal'):
-    q = Queue(name, connection=Redis())
+def enqueue(f, redis, urls, response, referer=None, tag=0, name='normal'):
+    q = Queue(name, connection=redis)
     return q.enqueue(f, urls, response, referer=referer, tag=tag)
 
 
@@ -42,14 +47,14 @@ def update_wait(dbname, name, wait):
     mongo = MongoClient()
     db = mongo[dbname]
     cond = {'name': name}
-    sets = {'$sets': {'wait': wait}}
+    sets = {'$set': {'wait': wait}}
     getattr(db, 'worker').update(cond, sets)
 
 def update_job_count(dbname, name, count):
     mongo = MongoClient()
     db = mongo[dbname]
     cond = {'name': name}
-    sets = {'$sets': {'max_job_count': count}}
+    sets = {'$set': {'max_job_count': count}}
     getattr(db, 'worker').update(cond, sets)
 
 
@@ -57,7 +62,7 @@ def exit(dbname, name):
     mongo = MongoClient()
     db = mongo[dbname]
     cond = {'name': name}
-    sets = {'$sets': {'status': 0}}
+    sets = {'$set': {'status': 0}}
     getattr(db, 'worker').update(cond, sets)
 
 
@@ -94,9 +99,10 @@ class Spider(object):
         'at': datetime.utcnow()
     }
 
-    def __init__(self, name, dbname, wait=1, max_job_count=2,
+    def __init__(self, name, dbname, redis, max_job_count=1, wait=1,
                  interval=86400, encoding='utf8'):
         self._cookies_stream = StringIO()
+        self._redis = Redis(redis['host'], redis['port'], db=redis['db'])
         self._referer = str
         self._headers = dict
         data = {
@@ -108,8 +114,11 @@ class Spider(object):
             'encoding': encoding,
             'max_job_count': max_job_count
         }
-        self.worker_update(self.validate_data('worker', data))
-        self.create_index()
+        if not self.name:
+            self.worker.insert(data)
+            self.create_index()
+        else:
+            self.worker_update(self.validate_data('worker', data))
 
     def validate_data(self, name, data):
         validated_data = {}
@@ -139,6 +148,10 @@ class Spider(object):
 
             finally:
                 self.end(url)
+
+    @property
+    def redis(self):
+        return self._redis
 
     @property
     def spider(self):
@@ -239,17 +252,17 @@ class Spider(object):
         self.worker_update(data)
 
     def end(self, url):
-        logging.warning('end: %s' % url)
+        logger.warning('end: %s' % url)
         self.pull_job(url)
         self.sleep(self.wait)
 
     def exit(self):
-        logging.warning('exit...')
+        logger.warning('exit...')
         self.worker_status(0)
         sys.exit(0)
 
     def start(self, url):
-        logging.warning('start: %s' % url)
+        logger.warning('start: %s' % url)
         self.push_job(url)
         self.worker_status(1)
 
@@ -321,7 +334,7 @@ class Spider(object):
                 while len(self.jobs) >= self.max_job_count:
                     self.sleep(self.wait)
 
-                job = enqueue(self.run, urls, response,
+                job = enqueue(self.run, self.redis, urls, response,
                               referer=self.referer, tag=tag)
 
                 while not job.result:
@@ -349,52 +362,57 @@ class Spider(object):
         sleep(float(rnd2)/float(rnd1))
 
 if __name__ == '__main__':
-    parser = optparse.OptionParser()
-    parser.add_option('-e', '--exit', action="store_true",
-                      dest="exit", default=True, help="exit: -r required")
-    parser.add_option('-m', '--max-job-count',
-                      action="store", dest="m",
-                      help="update max job count: -r required: ex. -r name -m 1")
-    parser.add_option('-w', '--wait',
-                      action="store", dest="m",
-                      help="update wait: -r required: ex. -r name -w 1")
-    parser.add_option('-r', '--project-name',
-                      action="store", dest="r",
-                      help="project module name")
-    parser.add_option('-q', '--queue',
-                      action="store", dest="q", default='normal',
-                      help="queue name[high|normal|law]")
-    opts, args = parser.parse_args()
-    if opts.r and opts.exit:
-        m = importlib.import_module('project.%s' % opts.r)
-        dbname = getattr(m, 'DBNAME')
-        exit(dbname, opts.r)
-        sys.exit(0)
+    try:
+        parser = optparse.OptionParser()
+        parser.add_option('-e', '--exit', action="store_true",
+                          dest="exit", default=False, help="exit: -r required")
+        parser.add_option('-m', '--max-job-count',
+                          action="store", dest="m", default=0,
+                          help="update max job count: -r required: ex. -r name -m 1")
+        parser.add_option('-w', '--wait',
+                          action="store", dest="w", default=0,
+                          help="update wait: -r required: ex. -r name -w 1")
+        parser.add_option('-r', '--project-name',
+                          action="store", dest="r",
+                          help="project module name")
+        parser.add_option('-q', '--queue',
+                          action="store", dest="q", default='normal',
+                          help="queue name[high|normal|law]")
+        opts, args = parser.parse_args()
+        if opts.r and opts.exit:
+            m = importlib.import_module('projects.%s' % opts.r)
+            dbname = getattr(m, 'DBNAME')
+            exit(dbname, opts.r)
 
-    elif opts.r and opts.m:
-        m = importlib.import_module('project.%s' % opts.r)
-        dbname = getattr(m, 'DBNAME')
-        update_job_count(dbname, opts.r, opts.m)
-        sys.exit(0)
+        elif opts.r and opts.m:
+            m = importlib.import_module('projects.%s' % opts.r)
+            dbname = getattr(m, 'DBNAME')
+            update_job_count(dbname, opts.r, opts.m)
 
-    elif opts.r and opts.w:
-        m = importlib.import_module('project.%s' % opts.r)
-        dbname = getattr(m, 'DBNAME')
-        update_job_count(dbname, opts.r, opts.w)
-        sys.exit(0)
+        elif opts.r and opts.w:
+            m = importlib.import_module('projects.%s' % opts.r)
+            dbname = getattr(m, 'DBNAME')
+            update_job_count(dbname, opts.r, opts.w)
 
-    else:
-        m1 = importlib.import_module('project')
-        start = getattr(m1, 'start')
+        else:
+            m1 = importlib.import_module('projects')
+            start = getattr(m1, 'start')
 
-        m2 = importlib.import_module('project.%s' % opts.r)
-        response = getattr(m2, 'response')
-        dbname = getattr(m2, 'DBNAME')
-        max_job_count = getattr(m2, 'MAX_JOB_COUNT')
-        wait = getattr(m2, 'WAIT')
-        url = getattr(m2, 'URL')
-        interval = getattr(m2, 'INTERVAL')
+            m2 = importlib.import_module('projects.%s' % opts.r)
+            response = getattr(m2, 'response')
+            dbname = getattr(m2, 'DBNAME')
+            max_job_count = getattr(m2, 'MAX_JOB_COUNT')
+            wait = getattr(m2, 'WAIT')
+            url = getattr(m2, 'URL')
+            interval = getattr(m2, 'INTERVAL')
+            redis_host = getattr(m2, 'REDIS_HOST')
+            redis_port = getattr(m2, 'REDIS_PORT')
+            redis_db = getattr(m2, 'REDIS_DB')
+            redis = Redis(redis_host, redis_port, db=redis_db)
+            q = Queue(opts.q, connection=redis)
+            q.enqueue(projects.start, opts.r, dbname, redis_host,
+                      redis_port, redis_db, max_job_count,
+                      interval, wait, [url], response)
 
-        enqueue(start, opts.r, dbname, max_job_count, interval
-                [url], response, name=opts.q)
-        sys.exit(0)
+    except:
+        importlib.import_module('mylib.logger').sentry()
