@@ -17,7 +17,6 @@ import projects
 
 logging.basicConfig(level=logging.INFO)
 USERAGENT = 'Spider/1.0'
-mongo = ''
 
 
 def update_wait(db, pname, wait):
