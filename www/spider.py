@@ -4,7 +4,6 @@
 import sys
 from urlparse import urlparse
 import optparse
-from random import randint
 import requests
 import requests.utils
 from bs4 import BeautifulSoup
