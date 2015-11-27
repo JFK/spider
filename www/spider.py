@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 import projects
 
 logging.basicConfig(level=logging.INFO)
+mongo = MongoClient()
 
 USERAGENTS = [
     'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1; .NET CLR 1.0.3705; .NET CLR 1.1.4322)',
@@ -30,28 +31,27 @@ USERAGENTS = [
 ]
 
 
-def update_wait(dbname, name, wait):
-    mongo = MongoClient()
+
+def update_wait(dbname, pname, wait):
     db = mongo[dbname]
-    cond = {'name': name}
+    cond = {'pname': pname}
     sets = {'$set': {'wait': wait}}
     getattr(db, 'worker').update(cond, sets)
 
 
-def update_job_count(dbname, name, count):
-    mongo = MongoClient()
+def update_job_count(dbname, pname, count):
     db = mongo[dbname]
-    cond = {'name': name}
+    cond = {'pname': pname}
     sets = {'$set': {'max_job_count': count}}
     getattr(db, 'worker').update(cond, sets)
 
 
-def exit(dbname, name):
-    mongo = MongoClient()
+def status(dbname, pname, val):
     db = mongo[dbname]
-    cond = {'name': name}
-    sets = {'$set': {'status': 0}}
+    cond = {'pname': pname}
+    sets = {'$set': {'status': val}}
     getattr(db, 'worker').update(cond, sets)
+    sys.exit(0)
 
 
 class SpiderError(Exception):
@@ -158,7 +158,6 @@ class Spider(object):
     @property
     def db(self):
         if not self._db:
-            mongo = MongoClient()
             self._db = getattr(mongo, self._dbname)
         return self._db
 
@@ -248,15 +247,9 @@ class Spider(object):
         self.pull_job(url)
         self.sleep('end %s' % url, self.wait)
 
-    def exit(self):
-        logging.info('exit...')
-        self.worker_status(0)
-        sys.exit(0)
-
     def start(self, url):
-        logging.info('start: %s' % url)
+        logging.info('start... %s' % url)
         self.push_job(url)
-        self.worker_status(1)
 
     def worker_one(self, field_name):
         return self.project_worker[field_name]
@@ -311,6 +304,15 @@ class Spider(object):
 
     def main(self, url, response, referer=None, tag=0):
         try:
+            if not self.status:
+                logging.info('status stopped...')
+                err = {
+                    'code': 500,
+                    'url': url,
+                    'msg': 'status stopped...',
+                    'at': datetime.utcnow()
+                }
+                raise SpiderError(err)
             self.referer = referer
             logging.info('referer... %s' % referer)
             resp = requests.get(
@@ -361,16 +363,6 @@ class Spider(object):
                     }
                     raise SpiderError(err)
 
-                if not self.status:
-                    logging.info('not status...')
-                    err = {
-                        'code': 500,
-                        'url': url,
-                        'msg': 'not status',
-                        'at': datetime.utcnow()
-                    }
-                    raise SpiderError(err)
-
                 while len(self.jobs) > self.max_job_count:
                     self.sleep('busy... %d > %d' % (len(self.jobs),
                                                     self.max_job_count))
@@ -382,10 +374,6 @@ class Spider(object):
                                        response, referer=self.referer,
                                        tag=tag)
                 logging.info('done... %d %s' % (job.result, url))
-
-        except SpiderError as err:
-            logging.info(err.error)
-            importlib.import_module('mylib.logger').sentry()
 
         except:
             importlib.import_module('mylib.logger').sentry()
@@ -404,7 +392,11 @@ if __name__ == '__main__':
     try:
         parser = optparse.OptionParser()
         parser.add_option('-e', '--exit', action="store_true",
-                          dest="exit", default=False, help="exit: -r required")
+                          dest="exit", default=False,
+                          help="exit: -r required")
+        parser.add_option('-s', '--start', action="store_true",
+                          dest="start", default=False,
+                          help="start: -r required")
         parser.add_option('-m', '--max-job-count',
                           action="store", dest="m", default=0,
                           help="update max job count: ex. -r name -m 1")
@@ -421,7 +413,12 @@ if __name__ == '__main__':
         if opts.p and opts.exit:
             m = importlib.import_module('projects.%s' % opts.p)
             dbname = getattr(m, 'DBNAME')
-            exit(dbname, opts.p)
+            status(dbname, opts.p, 0)
+
+        if opts.p and opts.start:
+            m = importlib.import_module('projects.%s' % opts.p)
+            dbname = getattr(m, 'DBNAME')
+            status(dbname, opts.p, 1)
 
         elif opts.p and opts.m:
             m = importlib.import_module('projects.%s' % opts.p)
