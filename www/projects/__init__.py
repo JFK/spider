@@ -1,17 +1,21 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from rq import Queue
+from redis import Redis
 from spider import Spider
 
 
-def start(name, dbname, redis_host, redis_port, redis_db,
-          max_job_count, interval, wait, urls, response,
-          referer=None, tag=0):
-    redis = {
-        'host': redis_host,
-        'port': redis_port,
-        'db': redis_db,
-    }
-    s = Spider(name, dbname, redis, max_job_count=max_job_count,
+def enqueue(redis, qname, pname, dbname, max_job_count, interval,
+            wait, urls, response, referer=None, tag=0):
+    conn = Redis(redis['HOST'], redis['PORT'], db=redis['DB'])
+    q = Queue(qname, connection=conn)
+    return q.enqueue(release, redis, qname, pname, dbname, max_job_count,
+                     interval, wait, urls, response, referer, tag)
+
+
+def release(redis, qname, pname, dbname, max_job_count, interval,
+            wait, urls, response, referer, tag):
+    s = Spider(redis, qname, pname, dbname, max_job_count=max_job_count,
                interval=interval, wait=wait)
     s.run(urls, response, referer=referer, tag=tag)

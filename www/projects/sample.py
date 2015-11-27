@@ -1,25 +1,27 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import conf.rq as rq
+import rq_settings as rq
+import re
 import logging
 
-URL = 'http://snapdish.co'
+BASE_URL = 'http://snapdish.co/books/'
 DBNAME = 'spiderdb'
 MAX_JOB_COUNT = 1
 WAIT = 1  # seconds
 INTERVAL = 86400  # 1 day
-REDIS_HOST = rq.REDIS_HOST
-REDIS_PORT = rq.REDIS_PORT
-REDIS_DB = rq.REDIS_DB
+REDIS = {
+    'HOST': rq.REDIS_HOST,
+    'PORT': rq.REDIS_PORT,
+    'DB': rq.REDIS_DB
+}
 
 
-def response(soup, spider, **kwargs):
-    """do some work here"""
-    logging.info('response...')
+def response(spider, soup, tag, **kwargs):
+    logging.info('sample response...')
     urls = []
     for a in soup.find_all('a'):
-        if a.get('href') and 'http://snapdish.co' in a.get('href'):
-            urls.append(a.get('href'))
-    logging.info(urls)
+        href = a.get('href')
+        if href and re.match('/books/', href) and href != '/books/':
+            urls.append('http://snapdish.co%s' % href)
     return urls

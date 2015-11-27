@@ -2,10 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import sys
-from rq import Queue
 from urlparse import urlparse
 import optparse
-from redis import Redis
 from random import randint
 import requests
 import requests.utils
@@ -15,7 +13,6 @@ import random
 import logging
 import importlib
 from pymongo import MongoClient, DESCENDING
-from bson.objectid import ObjectId
 from datetime import datetime, timedelta
 import projects
 
@@ -31,11 +28,6 @@ USERAGENTS = [
     'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.2; MyIE2; .NET CLR 1.1.4322)',
     'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.2; MyIE2; Maxthon; .NET CLR 1.1.4322)'
 ]
-
-
-def enqueue(f, redis, urls, response, referer=None, tag=0, name='normal'):
-    q = Queue(name, connection=redis)
-    return q.enqueue(f, urls, response, referer=referer, tag=tag)
 
 
 def update_wait(dbname, name, wait):
@@ -69,22 +61,8 @@ class SpiderError(Exception):
 
 class Spider(object):
 
-    ERROR_LOG = {
-        'err': dict,
-        'at': datetime.utcnow()
-    }
-    WORKER = {
-        'name': str,
-        'useragents': list,
-        'status': int,
-        'max_job_count': int,
-        'cookies': dict,
-        'wait': int,
-        'jobs': list,
-        'interval': int,
-        'at': datetime.utcnow()
-    }
     SPIDER = {
+        'pname': '',
         'tag': 0,
         'url': '',
         'text': '',
@@ -95,50 +73,75 @@ class Spider(object):
         'host': '',
         'query': '',
         'path': '',
-        'updated': datetime.utcnow(),
+        'visit_count': 1,
+        'updated_at': datetime.utcnow(),
         'at': datetime.utcnow()
     }
 
-    def __init__(self, name, dbname, redis, max_job_count=1, wait=1,
-                 interval=86400, encoding='utf8'):
-        self._redis = Redis(redis['host'], redis['port'], db=redis['db'])
+    def __init__(self, redis, qname, pname, dbname, max_job_count=1,
+                 wait=1, interval=86400, encoding='utf8'):
+        self._redis = redis
         self._cookies = dict
         self._referer = str
         self._headers = dict
         self._dbname = dbname
-        self._name = name
+        self._qname = qname
+        self._pname = pname
         self._db = None
         self._id = None
-        data = {
-            'name': name,
-            'interval': interval,
-            'wait': wait,
-            'status': 1,
-            'cookies': {},
-            'useragents': USERAGENTS,
-            'jobs': [],
-            'encoding': encoding,
-            'max_job_count': max_job_count
-        }
-        self._id = self.worker.insert(data)
+        self._project_worker = self.worker.find_one({'pname': pname})
+        if not self._project_worker:
+            logging.info('create project worker... %s' % pname)
+            data = {
+                'pname': pname,
+                'dbname': dbname,
+                'qname': qname,
+                'useragents': USERAGENTS,
+                'status': 1,
+                'max_job_count': max_job_count,
+                'cookies': {},
+                'wait': wait,
+                'jobs': [],
+                'encoding': encoding,
+                'interval': interval,
+                'updated_at': datetime.utcnow(),
+                'at': datetime.utcnow()
+            }
+            self._project_worker = data
+            self._id = self.worker.insert(data)
+            self._project_worker['_id'] = self._id
+            self.create_index()
+        else:
+            logging.info('update project worker... %s' % pname)
+            data = {'updated_at': datetime.utcnow()}
+            self.worker_update(data)
+            self._id = self._project_worker['_id']
         logging.info('worker _id: OjbectId("%s")' % self._id)
-        self.create_index()
 
     def create_index(self):
+        self.worker.create_index([("pname", DESCENDING)], background=True)
+        self.spider.create_index([("pname", DESCENDING)], background=True)
+        self.spider.create_index([("url", DESCENDING)], background=True)
         self.spider.create_index([("at", DESCENDING), ("url", DESCENDING)],
                                  background=True)
 
     def get(self, urls, response, referer=None, tag=0):
         for url in urls:
-            self.start(url)
-            logging.info('request_and_parse...')
-            yield self.request_and_parse(url, response, referer=referer, tag=tag)
-            self.end(url)
-            referer = url
+            logging.info('getting... %s' % url)
+            if self.is_visited(url):
+                logging.info('is_visited... %s' % url)
+                yield None
+            else:
+                logging.info('not_visited... %s' % url)
+                self.start(url)
+                yield self.main(url, response, referer=referer, tag=tag)
+                referer = url
 
     def run(self, urls, response, referer=None, tag=0):
         for url in self.get(urls, response, referer=referer, tag=tag):
-            logging.info('running... %s' % url)
+            if url:
+                self.end(url)
+        logging.info('finish running...')
 
     @property
     def redis(self):
@@ -151,10 +154,6 @@ class Spider(object):
     @property
     def worker(self):
         return getattr(self.db, 'worker')
-
-    @property
-    def error_log(self):
-        return getattr(self.db, 'error_log')
 
     @property
     def db(self):
@@ -192,9 +191,16 @@ class Spider(object):
         return self.worker_one('useragents')
 
     @property
-    def name(self):
-        self._name = self.worker_one('name')
-        return self._name
+    def pname(self):
+        return self.worker_one('pname')
+
+    @property
+    def dbname(self):
+        return self.worker_one('dbname')
+
+    @property
+    def qname(self):
+        return self.worker_one('qname')
 
     @property
     def status(self):
@@ -224,6 +230,10 @@ class Spider(object):
     def cookies(self):
         return self.worker_one('cookies') or {}
 
+    @property
+    def project_worker(self):
+        return self._project_worker
+
     def pull_job(self, url):
         cond = {'_id': self._id}
         data = {'$pull': {'jobs': url}}
@@ -235,9 +245,8 @@ class Spider(object):
         self.worker.update(cond, data)
 
     def end(self, url):
-        logging.info('end: %s' % url)
         self.pull_job(url)
-        self.sleep(self.wait)
+        self.sleep('end %s' % url, self.wait)
 
     def exit(self):
         logging.info('exit...')
@@ -250,7 +259,7 @@ class Spider(object):
         self.worker_status(1)
 
     def worker_one(self, field_name):
-        return self.worker.find_one({'_id': self._id})[field_name]
+        return self.project_worker[field_name]
 
     def worker_cookies(self, c):
         c = requests.utils.dict_from_cookiejar(c)
@@ -271,17 +280,25 @@ class Spider(object):
         sets = {'$set': data}
         self.worker.update(cond, sets)
 
-    def err(self, err):
-        self.error_log.insert(err)
+    def clean_urls(self, urls):
+        start_date = datetime.utcnow() - timedelta(seconds=self.interval)
+        cond = {
+            'at': {'$gte': start_date},
+            'url': {'$in': urls}
+        }
+        hits = map(lambda doc: doc.get('url', None),
+                   self.spider.find(cond, projection={'url': True}))
+        return set(hits) ^ set(urls)
 
     def visited(self, url, data):
-        logging.info('visited...')
+        logging.info('visited... %s' % url)
         sets = {}
         for k in self.SPIDER:
             v = data.get(k) or self.SPIDER[k]
-            sets[k] = v
+            if k != 'visit_count':
+                sets[k] = v
         cond = {'url': url}
-        sets = {'$set': sets}
+        sets = {'$set': sets, '$inc': {'visit_count': 1}}
         self.spider.update(cond, sets, upsert=True)
 
     def is_visited(self, url):
@@ -292,10 +309,10 @@ class Spider(object):
         }
         return self.spider.find_one(cond)
 
-    def request_and_parse(self, url, response, referer=None, tag=0):
+    def main(self, url, response, referer=None, tag=0):
         try:
             self.referer = referer
-            logging.info('referer: %s' % referer)
+            logging.info('referer... %s' % referer)
             resp = requests.get(
                 url,
                 headers=self.headers,
@@ -304,19 +321,20 @@ class Spider(object):
             resp.encoding = self.encoding
             self.worker_cookies(resp.cookies)
             if resp.status_code != 200:
+                logging.info('not 200...')
                 err = {
                     'code': resp.status_code,
                     'url': url,
-                    'msg': 'not 200'
+                    'msg': 'not 200',
+                    'at': datetime.utcnow()
                 }
                 raise SpiderError(err)
             else:
                 parsed = urlparse(url)
                 logging.info(parsed)
                 kwargs = dict(
+                    pname=self.pname,
                     url=url,
-                    tag=tag,
-                    run=self.run,
                     headers=self.headers,
                     text=resp.text,
                     encoding=self.encoding,
@@ -326,44 +344,48 @@ class Spider(object):
                     query=parsed.query,
                     path=parsed.path
                 )
-                urls = response(
-                    BeautifulSoup(resp.text, "lxml"),
-                    self.spider,
-                    **kwargs
-                )
+
+                logging.info('response tag... %d' % tag)
+                soup = BeautifulSoup(resp.text, "lxml")
+                urls = response(self, soup, tag, **kwargs)
                 self.visited(url, kwargs)
+                logging.info('urls... %d', len(urls))
+
                 if not urls:
+                    logging.info('not urls...')
                     err = {
                         'code': 500,
                         'url': url,
-                        'msg': 'not urls'
+                        'msg': 'not urls',
+                        'at': datetime.utcnow()
                     }
                     raise SpiderError(err)
 
                 if not self.status:
+                    logging.info('not status...')
                     err = {
                         'code': 500,
                         'url': url,
-                        'msg': 'not status'
+                        'msg': 'not status',
+                        'at': datetime.utcnow()
                     }
                     raise SpiderError(err)
 
                 while len(self.jobs) > self.max_job_count:
-                    logging.info('busy...%d %d' % (len(self.jobs),
-                                                   self.max_job_count))
-                    self.sleep(self.wait)
+                    self.sleep('busy... %d > %d' % (len(self.jobs),
+                                                    self.max_job_count))
+                urls = self.clean_urls(urls)
+                logging.info('enqueue urls... %d', len(urls))
+                job = projects.enqueue(self.redis, self.qname, self.pname,
+                                       self.dbname, self.max_job_count,
+                                       self.interval, self.wait, urls,
+                                       response, referer=self.referer,
+                                       tag=tag)
+                logging.info('done... %d %s' % (job.result, url))
 
-                logging.info('enqueue...')
-                job = enqueue(self.run, self.redis, urls, response,
-                              referer=self.referer, tag=tag)
-
-                while not job.result:
-                    logging.info('done...%d' % job.result)
-                    self.sleep(self.wait)
-
-        except SpiderError, err:
-            logging.info(str(err))
-            self.err(err)
+        except SpiderError as err:
+            logging.info(err.error)
+            importlib.import_module('mylib.logger').sentry()
 
         except:
             importlib.import_module('mylib.logger').sentry()
@@ -371,7 +393,8 @@ class Spider(object):
         finally:
             return url
 
-    def sleep(self, wait):
+    def sleep(self, name, wait):
+        logging.info('%s sec sleeping at %s...' % (wait, name))
         rnd1 = random.choice("2345")
         rnd2 = random.choice("6789")
         sleep(float(rnd2)/float(rnd1))
@@ -388,47 +411,39 @@ if __name__ == '__main__':
         parser.add_option('-w', '--wait',
                           action="store", dest="w", default=0,
                           help="update wait: ex. -r name -w 1")
-        parser.add_option('-r', '--project-name',
-                          action="store", dest="r",
+        parser.add_option('-p', '--project-name',
+                          action="store", dest="p",
                           help="project module name")
-        parser.add_option('-q', '--queue',
+        parser.add_option('-q', '--queue-name',
                           action="store", dest="q", default='normal',
                           help="queue name[high|normal|law]")
         opts, args = parser.parse_args()
-        if opts.r and opts.exit:
-            m = importlib.import_module('projects.%s' % opts.r)
+        if opts.p and opts.exit:
+            m = importlib.import_module('projects.%s' % opts.p)
             dbname = getattr(m, 'DBNAME')
-            exit(dbname, opts.r)
+            exit(dbname, opts.p)
 
-        elif opts.r and opts.m:
-            m = importlib.import_module('projects.%s' % opts.r)
+        elif opts.p and opts.m:
+            m = importlib.import_module('projects.%s' % opts.p)
             dbname = getattr(m, 'DBNAME')
-            update_job_count(dbname, opts.r, opts.m)
+            update_job_count(dbname, opts.p, opts.m)
 
-        elif opts.r and opts.w:
-            m = importlib.import_module('projects.%s' % opts.r)
+        elif opts.p and opts.w:
+            m = importlib.import_module('projects.%s' % opts.p)
             dbname = getattr(m, 'DBNAME')
-            update_job_count(dbname, opts.r, opts.w)
+            update_job_count(dbname, opts.p, opts.w)
 
         else:
-            m1 = importlib.import_module('projects')
-            start = getattr(m1, 'start')
-
-            m2 = importlib.import_module('projects.%s' % opts.r)
-            response = getattr(m2, 'response')
-            dbname = getattr(m2, 'DBNAME')
-            max_job_count = getattr(m2, 'MAX_JOB_COUNT')
-            wait = getattr(m2, 'WAIT')
-            url = getattr(m2, 'URL')
-            interval = getattr(m2, 'INTERVAL')
-            redis_host = getattr(m2, 'REDIS_HOST')
-            redis_port = getattr(m2, 'REDIS_PORT')
-            redis_db = getattr(m2, 'REDIS_DB')
-            redis = Redis(redis_host, redis_port, db=redis_db)
-            q = Queue(opts.q, connection=redis)
-            q.enqueue(projects.start, opts.r, dbname, redis_host,
-                      redis_port, redis_db, max_job_count,
-                      interval, wait, [url], response)
+            m = importlib.import_module('projects.%s' % opts.p)
+            response = getattr(m, 'response')
+            dbname = getattr(m, 'DBNAME')
+            max_job_count = getattr(m, 'MAX_JOB_COUNT')
+            wait = getattr(m, 'WAIT')
+            url = getattr(m, 'BASE_URL')
+            interval = getattr(m, 'INTERVAL')
+            redis = getattr(m, 'REDIS')
+            projects.enqueue(redis, opts.q, opts.p, dbname, max_job_count,
+                             interval, wait, [url], response)
 
     except:
         importlib.import_module('mylib.logger').sentry()
