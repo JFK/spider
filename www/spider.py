@@ -17,28 +17,31 @@ import projects
 
 logging.basicConfig(level=logging.INFO)
 USERAGENT = 'Spider/1.0'
+mongo = ''
 
 
-def update_wait(dbname, pname, wait):
-    db = mongo[dbname]
+def update_wait(db, pname, wait):
+    mongo = MongoClient(db['HOST'], db['PORT'])
+    db = mongo[db['DB']]
     cond = {'pname': pname}
     sets = {'$set': {'wait': wait}}
     getattr(db, 'worker').update(cond, sets)
 
 
-def update_job_count(dbname, pname, count):
-    db = mongo[dbname]
+def update_job_count(db, pname, count):
+    mongo = MongoClient(db['HOST'], db['PORT'])
+    db = mongo[db['DB']]
     cond = {'pname': pname}
     sets = {'$set': {'max_job_count': count}}
     getattr(db, 'worker').update(cond, sets)
 
 
-def status(dbname, pname, val):
-    db = mongo[dbname]
+def status(db, pname, val):
+    mongo = MongoClient(db['HOST'], db['PORT'])
+    db = mongo[db['DB']]
     cond = {'pname': pname}
     sets = {'$set': {'status': val}}
     getattr(db, 'worker').update(cond, sets)
-    sys.exit(0)
 
 
 class SpiderError(Exception):
@@ -58,6 +61,7 @@ class Spider(object):
         'encoding': '',
         'scheme': '',
         'host': '',
+        'option': {},
         'query': '',
         'path': '',
         'visit_count': 1,
@@ -65,29 +69,29 @@ class Spider(object):
         'at': datetime.utcnow()
     }
 
-    def __init__(self, redis, qname, pname, dbname, max_job_count=1,
+    def __init__(self, redis, qname, pname, db, max_job_count=1,
                  wait=1, interval=86400, encoding='utf8'):
         self._redis = redis
-        self._cookies = dict
-        self._referer = str
-        self._headers = dict
-        self._dbname = dbname
+        self._cookies = {}
+        self._referer = None
+        self._headers = {}
+        self._db = db
         self._qname = qname
         self._pname = pname
-        self._db = None
+        self._db_conn = None
         self._id = None
         self._project_worker = self.worker.find_one({'pname': pname})
         if not self._project_worker:
             logging.info('create project worker... %s' % pname)
             data = {
                 'pname': pname,
-                'dbname': dbname,
+                'db': db,
+                'redis': redis,
                 'qname': qname,
                 'useragent': USERAGENT,
                 'status': 1,
                 'max_job_count': max_job_count,
                 'cookies': {},
-                'options': {},
                 'wait': wait,
                 'jobs': [],
                 'encoding': encoding,
@@ -137,17 +141,22 @@ class Spider(object):
 
     @property
     def spider(self):
-        return getattr(self.db, 'spider')
+        return getattr(self.db_conn, 'spider')
 
     @property
     def worker(self):
-        return getattr(self.db, 'worker')
+        return getattr(self.db_conn, 'worker')
 
     @property
     def db(self):
-        if not self._db:
-            self._db = getattr(mongo, self._dbname)
         return self._db
+
+    @property
+    def db_conn(self):
+        if not self._db_conn:
+            db = MongoClient(self._db['HOST'], self._db['PORT'])
+            self._db_conn = getattr(db, self._db['DB'])
+        return self._db_conn
 
     @property
     def useragent(self):
@@ -182,7 +191,14 @@ class Spider(object):
 
     @property
     def dbname(self):
-        return self.worker_one('dbname')
+        return self._dbname
+
+    def dbhost(self):
+        return self._dbhost
+
+    @property
+    def dbport(self):
+        return self._dbport
 
     @property
     def qname(self):
@@ -358,7 +374,7 @@ class Spider(object):
                 urls = self.clean_urls(urls)
                 logging.info('enqueue urls... %d', len(urls))
                 job = projects.enqueue(self.redis, self.qname, self.pname,
-                                       self.dbname, self.max_job_count,
+                                       self.db, self.max_job_count,
                                        self.interval, self.wait, urls,
                                        response, referer=self.referer,
                                        tag=tag)
@@ -403,20 +419,18 @@ if __name__ == '__main__':
         m = importlib.import_module('projects.%s' % opts.p)
         response = getattr(m, 'response')
         db = getattr(m, 'MONGODB')
-        dbname = db['DBNAME']
-        mongo = MongoClient(db['HOST'], db['PORT'])
 
         if opts.p and opts.exit:
-            status(dbname, opts.p, 0)
+            status(db, opts.p, 0)
 
         if opts.p and opts.start:
-            status(dbname, opts.p, 1)
+            status(db, opts.p, 1)
 
         elif opts.p and opts.m:
-            update_job_count(dbname, opts.p, opts.m)
+            update_job_count(db, opts.p, opts.m)
 
         elif opts.p and opts.w:
-            update_job_count(dbname, opts.p, opts.w)
+            update_job_count(db, opts.p, opts.w)
 
         else:
             max_job_count = getattr(m, 'MAX_JOB_COUNT')
@@ -424,7 +438,7 @@ if __name__ == '__main__':
             url = getattr(m, 'BASE_URL')
             interval = getattr(m, 'INTERVAL')
             redis = getattr(m, 'REDIS')
-            projects.enqueue(redis, opts.q, opts.p, dbname, max_job_count,
+            projects.enqueue(redis, opts.q, opts.p, db, max_job_count,
                              interval, wait, [url], response)
 
     except:

@@ -18,7 +18,7 @@ REDIS = {
 MONGODB = {
     'HOST': 'localhost',
     'PORT': 27017,
-    'DBNAME': 'spiderdb'
+    'DB': 'spiderdb'
 }
 
 
