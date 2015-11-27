@@ -1,5 +1,5 @@
 {% extends "../layouts/base.html" %}
-{% block title %}ログイン{% end %}
+{% block title %}Login{% end %}
 {% block css %}<link href="{{static_url("assets/css/form.css")}}" rel="stylesheet">{% end %}
 {% block head_js %}
 <!-- Just for debugging purposes. Don't actually copy these 2 lines! -->
@@ -13,13 +13,13 @@
     <div class="container">
         <div class="row mt">
             <form class="form-form" role="form" method="post">
-                <h1>ログイン</h1>
+                <h1>Login</h1>
                 {% module Errors(errors) %}
                 <div class="form-group">
-                    <input type="email" name="email" value="{{ email }}" class="form-control" placeholder="メールアドレスを入力" required autofocus>
-                    <input type="password" name="password" class="form-control" placeholder="パスワードを入力" required>
+                    <input type="email" name="email" value="{{ email }}" class="form-control" placeholder="Enter your email." required autofocus>
+                    <input type="password" name="password" class="form-control" placeholder="Enter password." required>
                 </div>
-                <button type="submit" class="btn btn-warning btn-lg">ログイン</button>
+                <button type="submit" class="btn btn-warning btn-lg">Login</button>
                 {% raw xsrf_form_html() %}
             </form>					
         </div><!-- /row -->

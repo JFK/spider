@@ -151,7 +151,7 @@ class BaseHandler(SentryMixin, RequestHandler):
         ... note:: 引数の値をからにして渡すと削除する
         """
         if first_name and last_name:
-            self.current_user = last_name + first_name
+            self.current_user = "%s %s" % (first_name, last_name)
             self.set_secure_cookie(
                 self.settings["current_user_cookie_name"],
                 self.current_user

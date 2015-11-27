@@ -1,31 +1,31 @@
 {% if errors["login"] %}
 <div class="alert alert-danger alert-dismissible" role="alert">
-  <button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span><span class="sr-only">閉じる</span></button>
-    <strong>エラー</strong> ログインに失敗しました
+  <button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+    <strong>Error</strong> Failed to login
     </div>
 {% end %}
 {% if errors["email"] %}
 <div class="alert alert-danger alert-dismissible" role="alert">
-  <button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span><span class="sr-only">閉じる</span></button>
-    <strong>エラー</strong> メールアドレスを正しく入力してください
+  <button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+    <strong>Error</strong> Please enter valid email address
     </div>
 {% end %}
 {% if errors["dup_email"] %}
 <div class="alert alert-danger alert-dismissible" role="alert">
-  <button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span><span class="sr-only">閉じる</span></button>
-    <strong>エラー</strong> メールアドレスは既に登録されています
+  <button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+    <strong>Error</strong> Email you entered is already registered
     </div>
 {% end %}
 {% if errors["password"] %}
 <div class="alert alert-danger alert-dismissible" role="alert">
-  <button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span><span class="sr-only">閉じる</span></button>
-    <strong>エラー</strong> パスワードを正しく入力してください
+  <button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+    <strong>Error</strong> Please enter valid password
     </div>
 {% end %}
 {% if errors["unknown"] %}
 <div class="alert alert-danger alert-dismissible" role="alert">
-  <button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span><span class="sr-only">閉じる</span></button>
-    <strong>不明なエラー</strong> 管理者にお問い合わせください
+  <button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+    <strong>Unknown Error</strong> Please ask system administrators
     </div>
 {% end %}
 

@@ -7,22 +7,26 @@
                 <span class="icon-bar"></span>
                 <span class="icon-bar"></span>
             </button>
-            <a class="navbar-brand" href="/"><b>タイトル</b></a>
+            {% if current_user %}
+            <a class="navbar-brand" href="/home"><b>Spider</b></a>
+            {% else %}
+            <a class="navbar-brand" href="/"><b>Spider</b></a>
+            {% end %}
         </div>
         <div class="navbar-collapse collapse">
             <ul class="nav navbar-nav navbar-right">
                 {% if current_user %}
                 <li class="dropdown">
-                <a href="#" class="dropdown-toggle" data-toggle="dropdown">{{ current_user }}さん<span class="caret"></span></a>
+                <a href="#" class="dropdown-toggle" data-toggle="dropdown">Hi, {{ current_user }}<span class="caret"></span></a>
                 <ul class="dropdown-menu" role="menu">
-                    <li><a href="/setting"><span class="glyphicon glyphicon-cog"></span> アカウント設定</a></li>
+                    <li><a href="/setting"><span class="glyphicon glyphicon-cog"></span> Account Setting</a></li>
                         <li class="divider"></li>
-                        <li><a href="/logout"><span class="glyphicon glyphicon-off"></span> ログアウト</a></li>
+                        <li><a href="/logout"><span class="glyphicon glyphicon-off"></span> Logout</a></li>
                     </ul>
-                    <li><a href="/home"><span class="glyphicon glyphicon-home"></span> ホーム</a></li>
+                    <li><a href="/home"><span class="glyphicon glyphicon-home"></span> Home</a></li>
                     {% else %}
-                    <li><a href="/signup">アカウント登録</a></li>
-                    <li><a href="/login">ログイン</a></li>
+                    <li><a href="/signup">Singup</a></li>
+                    <li><a href="/login">Login</a></li>
                     {% end %}
                 </ul>
             </div><!--/.nav-collapse -->

@@ -59,8 +59,12 @@ class SettingHandler(CommonHandler):
                 email = self.me.email
 
             else:
-                if User.objects.get(email=email):
-                    raise ValidationError('dup_email')
+                try:
+                    user = User.objects.get(email=email)
+                    if user:
+                        raise ValidationError('dup_email')
+                except User.DoesNotExist:
+                    pass
 
             self.me.email = email
 
@@ -137,8 +141,10 @@ class SignupHandler(CommonHandler):
             email = self.get_argument("email")
             try:
                 user = User.objects.get(email=email)
+                if user:
+                    raise ValidationError('dup_email')
             except User.DoesNotExist:
-                raise ValidationError('dup_email')
+                pass
 
             user = User()
             user.email = email
