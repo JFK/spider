@@ -17,19 +17,7 @@ from datetime import datetime, timedelta
 import projects
 
 logging.basicConfig(level=logging.INFO)
-mongo = MongoClient()
-
-USERAGENTS = [
-    'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1; .NET CLR 1.0.3705; .NET CLR 1.1.4322)',
-    'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; MyIE2; Maxthon; .NET CLR 1.1.4322)',
-    'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; Q312461; FunWebProducts; .NET CLR 1.1.4322)',
-    'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; Woningstichting Den Helder; .NET CLR 1.0.3705)',
-    'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.2; .NET CLR 1.1.4322)',
-    'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.2; .NET CLR 1.1.4322; .NET CLR 2.0.41115)',
-    'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.2; MyIE2; .NET CLR 1.1.4322)',
-    'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.2; MyIE2; Maxthon; .NET CLR 1.1.4322)'
-]
-
+USERAGENT = 'Spider/1.0'
 
 
 def update_wait(dbname, pname, wait):
@@ -96,10 +84,11 @@ class Spider(object):
                 'pname': pname,
                 'dbname': dbname,
                 'qname': qname,
-                'useragents': USERAGENTS,
+                'useragent': USERAGENT,
                 'status': 1,
                 'max_job_count': max_job_count,
                 'cookies': {},
+                'options': {},
                 'wait': wait,
                 'jobs': [],
                 'encoding': encoding,
@@ -163,8 +152,7 @@ class Spider(object):
 
     @property
     def useragent(self):
-        rnd = randint(0, len(self.useragents) - 1)
-        return self.useragents[rnd]
+        return self.worker_one('useragent')
 
     @property
     def headers(self):
@@ -349,7 +337,9 @@ class Spider(object):
 
                 logging.info('response tag... %d' % tag)
                 soup = BeautifulSoup(resp.text, "lxml")
-                urls = response(self, soup, tag, **kwargs)
+                tag, urls, opt = response(self, soup, tag, **kwargs)
+                kwargs.update({'tag': tag})
+                kwargs.update({'option': opt})
                 self.visited(url, kwargs)
                 logging.info('urls... %d', len(urls))
 
@@ -410,30 +400,26 @@ if __name__ == '__main__':
                           action="store", dest="q", default='normal',
                           help="queue name[high|normal|law]")
         opts, args = parser.parse_args()
+
+        m = importlib.import_module('projects.%s' % opts.p)
+        response = getattr(m, 'response')
+        db = getattr(m, 'MONGODB')
+        dbname = db['DBNAME']
+        mongo = MongoClient(db['HOST'], db['PORT'])
+
         if opts.p and opts.exit:
-            m = importlib.import_module('projects.%s' % opts.p)
-            dbname = getattr(m, 'DBNAME')
             status(dbname, opts.p, 0)
 
         if opts.p and opts.start:
-            m = importlib.import_module('projects.%s' % opts.p)
-            dbname = getattr(m, 'DBNAME')
             status(dbname, opts.p, 1)
 
         elif opts.p and opts.m:
-            m = importlib.import_module('projects.%s' % opts.p)
-            dbname = getattr(m, 'DBNAME')
             update_job_count(dbname, opts.p, opts.m)
 
         elif opts.p and opts.w:
-            m = importlib.import_module('projects.%s' % opts.p)
-            dbname = getattr(m, 'DBNAME')
             update_job_count(dbname, opts.p, opts.w)
 
         else:
-            m = importlib.import_module('projects.%s' % opts.p)
-            response = getattr(m, 'response')
-            dbname = getattr(m, 'DBNAME')
             max_job_count = getattr(m, 'MAX_JOB_COUNT')
             wait = getattr(m, 'WAIT')
             url = getattr(m, 'BASE_URL')

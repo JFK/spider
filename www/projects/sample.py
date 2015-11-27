@@ -6,7 +6,7 @@ import re
 import logging
 
 BASE_URL = 'http://snapdish.co/books/'
-DBNAME = 'spiderdb'
+
 MAX_JOB_COUNT = 1
 WAIT = 1  # seconds
 INTERVAL = 86400  # 1 day
@@ -15,13 +15,19 @@ REDIS = {
     'PORT': rq.REDIS_PORT,
     'DB': rq.REDIS_DB
 }
+MONGODB = {
+    'HOST': 'localhost',
+    'PORT': 27017,
+    'DBNAME': 'spiderdb'
+}
 
 
 def response(spider, soup, tag, **kwargs):
     logging.info('sample response...')
     urls = []
+    option = {}
     for a in soup.find_all('a'):
         href = a.get('href')
         if href and re.match('/books/', href) and href != '/books/':
             urls.append('http://snapdish.co%s' % href)
-    return urls
+    return (tag, urls, option)
