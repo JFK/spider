@@ -16,3 +16,4 @@ ipython==4.0.0
 tox==2.1.1
 pytest==2.8.2
 PyYAML==3.11
+rq-dashboard=0.3.4
