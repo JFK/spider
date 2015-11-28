@@ -19,27 +19,11 @@ logging.basicConfig(level=logging.INFO)
 USERAGENT = 'Spider/1.0'
 
 
-def update_wait(db, pname, wait):
+def update_worker(db, field, val):
     mongo = MongoClient(db['HOST'], db['PORT'])
     db = mongo[db['DB']]
     cond = {'pname': pname}
-    sets = {'$set': {'wait': wait}}
-    getattr(db, 'worker').update(cond, sets)
-
-
-def update_job_count(db, pname, count):
-    mongo = MongoClient(db['HOST'], db['PORT'])
-    db = mongo[db['DB']]
-    cond = {'pname': pname}
-    sets = {'$set': {'max_job_count': count}}
-    getattr(db, 'worker').update(cond, sets)
-
-
-def status(db, pname, val):
-    mongo = MongoClient(db['HOST'], db['PORT'])
-    db = mongo[db['DB']]
-    cond = {'pname': pname}
-    sets = {'$set': {'status': val}}
+    sets = {'$set': {field: val}}
     getattr(db, 'worker').update(cond, sets)
 
 
@@ -420,16 +404,16 @@ if __name__ == '__main__':
         db = getattr(m, 'MONGODB')
 
         if opts.p and opts.exit:
-            status(db, opts.p, 0)
+            update_worker(db, opts.p, 'status', 0)
 
         if opts.p and opts.start:
-            status(db, opts.p, 1)
+            update_worker(db, opts.p, 'status', 1)
 
         elif opts.p and opts.m:
-            update_job_count(db, opts.p, opts.m)
+            update_worker(db, opts.p, 'max_job_count', int(opts.m))
 
         elif opts.p and opts.w:
-            update_job_count(db, opts.p, opts.w)
+            update_worker(db, opts.p, 'wait', int(opts.w))
 
         else:
             max_job_count = getattr(m, 'MAX_JOB_COUNT')

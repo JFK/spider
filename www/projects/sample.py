@@ -4,6 +4,7 @@
 import rq_settings as rq
 import re
 import logging
+from projects import queue as q
 
 BASE_URL = 'http://snapdish.co/books/'
 
@@ -21,6 +22,8 @@ MONGODB = {
     'DB': 'spiderdb'
 }
 
+def keyword(text):
+    logging.info(text)
 
 def response(spider, soup, tag, **kwargs):
     logging.info('sample response...')
@@ -30,4 +33,5 @@ def response(spider, soup, tag, **kwargs):
         href = a.get('href')
         if href and re.match('/books/', href) and href != '/books/':
             urls.append('http://snapdish.co%s' % href)
+            q(spider.redis, qname='normal').enqueue(keyword, a.text)
     return (tag, urls, option)
