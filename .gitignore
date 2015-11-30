@@ -58,3 +58,4 @@ target/
 ### Vagrant ###
 .vagrant/
 vagrant_ansible_inventory*
+aws.py
