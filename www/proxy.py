@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 from boto import ec2 as boto_ec2
 from time import sleep
 from pymongo import MongoClient
