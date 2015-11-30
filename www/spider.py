@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import sys
 from urlparse import urlparse
 import optparse
 import requests
@@ -19,7 +18,7 @@ logging.basicConfig(level=logging.INFO)
 USERAGENT = 'Spider/1.0'
 
 
-def update_worker(db, field, val):
+def update_worker(db, pname, field, val):
     mongo = MongoClient(db['HOST'], db['PORT'])
     db = mongo[db['DB']]
     cond = {'pname': pname}
@@ -53,8 +52,9 @@ class Spider(object):
     }
 
     def __init__(self, redis, qname, pname, db, max_job_count=1,
-                 wait=1, interval=86400, encoding='utf8'):
+                 wait=1, interval=86400, encoding='utf8', proxy=None):
         self._redis = redis
+        self._proxy = proxy
         self._cookies = {}
         self._referer = None
         self._headers = {}
@@ -73,6 +73,7 @@ class Spider(object):
                 'qname': qname,
                 'useragent': USERAGENT,
                 'status': 1,
+                'proxy': proxy,
                 'max_job_count': max_job_count,
                 'cookies': {},
                 'wait': wait,
@@ -91,7 +92,7 @@ class Spider(object):
             data = {'updated_at': datetime.utcnow()}
             self.worker_update(data)
             self._id = self._project_worker['_id']
-        logging.info('worker _id: OjbectId("%s")' % self._id)
+        logging.info('worker _id: ObjectId("%s")' % self._id)
 
     def create_index(self):
         self.worker.create_index([("pname", DESCENDING)], background=True)
@@ -121,6 +122,11 @@ class Spider(object):
     @property
     def redis(self):
         return self._redis
+
+    @property
+    def proxy(self):
+        p = self.worker_one('proxy', use_db=True)
+        return p if p else self._proxy
 
     @property
     def spider(self):
@@ -237,7 +243,9 @@ class Spider(object):
         logging.info('start... %s' % url)
         self.push_job(url)
 
-    def worker_one(self, field_name):
+    def worker_one(self, field_name, use_db=False):
+        if use_db:
+            return self.worker.find_one({'pname': self.pname})[field_name]
         return self.project_worker[field_name]
 
     def worker_cookies(self, c):
@@ -301,10 +309,13 @@ class Spider(object):
                 raise SpiderError(err)
             self.referer = referer
             logging.info('referer... %s' % referer)
+            logging.info('proxy...')
+            logging.info(self.proxy)
             resp = requests.get(
                 url,
                 headers=self.headers,
-                cookies=self.cookies
+                cookies=self.cookies,
+                proxies=self.proxy
             )
             resp.encoding = self.encoding
             self.worker_cookies(resp.cookies)
@@ -360,7 +371,7 @@ class Spider(object):
                                        self.db, self.max_job_count,
                                        self.interval, self.wait, urls,
                                        response, referer=self.referer,
-                                       tag=tag)
+                                       tag=tag, proxy=self.proxy)
                 logging.info('done... %d %s' % (job.result, url))
 
         except:
@@ -381,16 +392,16 @@ if __name__ == '__main__':
         parser = optparse.OptionParser()
         parser.add_option('-e', '--exit', action="store_true",
                           dest="exit", default=False,
-                          help="exit: -r required")
+                          help="exit: -p required")
         parser.add_option('-s', '--start', action="store_true",
                           dest="start", default=False,
-                          help="start: -r required")
+                          help="start: -p required")
         parser.add_option('-m', '--max-job-count',
                           action="store", dest="m", default=0,
-                          help="update max job count: ex. -r name -m 1")
+                          help="update max job count: ex. -p name -m 1")
         parser.add_option('-w', '--wait',
                           action="store", dest="w", default=0,
-                          help="update wait: ex. -r name -w 1")
+                          help="update wait: ex. -p name -w 1")
         parser.add_option('-p', '--project-name',
                           action="store", dest="p",
                           help="project module name")
@@ -421,8 +432,9 @@ if __name__ == '__main__':
             url = getattr(m, 'BASE_URL')
             interval = getattr(m, 'INTERVAL')
             redis = getattr(m, 'REDIS')
+            proxy = getattr(m, 'PROXY')
             projects.enqueue(redis, opts.q, opts.p, db, max_job_count,
-                             interval, wait, [url], response)
+                             interval, wait, [url], response, proxy=proxy)
 
     except:
         importlib.import_module('mylib.logger').sentry()

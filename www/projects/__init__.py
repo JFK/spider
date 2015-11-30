@@ -10,14 +10,16 @@ def queue(redis, qname='normal'):
     conn = Redis(redis['HOST'], redis['PORT'], db=redis['DB'])
     return Queue(qname, connection=conn)
 
+
 def enqueue(redis, qname, pname, db, max_job_count, interval,
-            wait, urls, response, referer=None, tag=0):
+            wait, urls, response, referer=None, tag=0, proxy=None):
     q = queue(redis, qname)
     return q.enqueue(release, redis, qname, pname, db, max_job_count,
-                     interval, wait, urls, response, referer, tag)
+                     interval, wait, urls, response, referer, tag, proxy)
+
 
 def release(redis, qname, pname, db, max_job_count, interval,
-            wait, urls, response, referer, tag):
+            wait, urls, response, referer, tag, proxy):
     s = Spider(redis, qname, pname, db, max_job_count=max_job_count,
-               interval=interval, wait=wait)
+               interval=interval, wait=wait, proxy=proxy)
     s.run(urls, response, referer=referer, tag=tag)
