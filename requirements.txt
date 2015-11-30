@@ -5,6 +5,7 @@ pymongo==3.1
 redis==2.10.5
 requests==2.8.1
 rq==0.5.6
+rq-dashboard==0.3.4
 wheel==0.24.0
 tornado==4.3.0
 python-logstash==0.4.5
@@ -16,4 +17,3 @@ ipython==4.0.0
 tox==2.1.1
 pytest==2.8.2
 PyYAML==3.11
-rq-dashboard=0.3.4
