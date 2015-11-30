@@ -73,7 +73,7 @@ class Spider(object):
                 'qname': qname,
                 'useragent': USERAGENT,
                 'status': 1,
-                'proxy': proxy,
+                'proxy': [proxy],
                 'max_job_count': max_job_count,
                 'cookies': {},
                 'wait': wait,
@@ -126,7 +126,7 @@ class Spider(object):
     @property
     def proxy(self):
         p = self.worker_one('proxy', use_db=True)
-        return p if p else self._proxy
+        return random.choice(p) if len(p) else self._proxy
 
     @property
     def spider(self):
