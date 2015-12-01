@@ -95,6 +95,7 @@ if __name__ == '__main__':
         print 'Please create .aws/config and add these configs'
         print '$ mkdir .aws'
         print '$ cat <<EOF > .aws/config'
+        print '[default]'
         print 'aws_access_key_id = <aws_access_key_id>'
         print 'aws_secret_access_key = <aws_secret_access_key>'
         print 'region_name = ap-northeast-1'
