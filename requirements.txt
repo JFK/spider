@@ -17,3 +17,4 @@ ipython==4.0.0
 tox==2.1.1
 pytest==2.8.2
 PyYAML==3.11
+boto==2.38.0
