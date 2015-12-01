@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 
 from urlparse import urlparse
-import optparse
+import rq_settings as rq
+import argparse
 import requests
 import requests.utils
 from bs4 import BeautifulSoup
@@ -15,7 +16,7 @@ from datetime import datetime, timedelta
 import projects
 
 logging.basicConfig(level=logging.INFO)
-USERAGENT = 'Spider/1.0'
+USERAGENT = 'WWW-Spider/1.0'
 
 
 def update_worker(db, pname, field, val):
@@ -95,6 +96,7 @@ class Spider(object):
         logging.info('worker _id: ObjectId("%s")' % self._id)
 
     def create_index(self):
+        self.proxy.create_index([("http", DESCENDING)], background=True)
         self.worker.create_index([("pname", DESCENDING)], background=True)
         self.spider.create_index([("pname", DESCENDING)], background=True)
         self.spider.create_index([("url", DESCENDING)], background=True)
@@ -125,7 +127,8 @@ class Spider(object):
 
     @property
     def proxy(self):
-        p = self.worker_one('proxy', use_db=True)
+        db = getattr(self.db_conn, 'proxy')
+        p = map(lambda doc: doc, db.data.find({}))
         return random.choice(p) if len(p) else self._proxy
 
     @property
@@ -389,41 +392,49 @@ class Spider(object):
 
 if __name__ == '__main__':
     try:
-        parser = optparse.OptionParser()
-        parser.add_option('-e', '--exit', action="store_true",
-                          dest="exit", default=False,
-                          help="exit: -p required")
-        parser.add_option('-s', '--start', action="store_true",
-                          dest="start", default=False,
-                          help="start: -p required")
-        parser.add_option('-m', '--max-job-count',
-                          action="store", dest="m", default=0,
-                          help="update max job count: ex. -p name -m 1")
-        parser.add_option('-w', '--wait',
-                          action="store", dest="w", default=0,
-                          help="update wait: ex. -p name -w 1")
-        parser.add_option('-p', '--project-name',
-                          action="store", dest="p",
-                          help="project module name")
-        parser.add_option('-q', '--queue-name',
-                          action="store", dest="q", default='normal',
-                          help="queue name[high|normal|law]")
+        parser = argparse.ArgumentParser(description='Spider Tools')
+        parser.add_argument('--stop', action="store_true",
+                            dest="stop", default=False,
+                            help="stop spider")
+        parser.add_argument('--start', action="store_true",
+                            dest="start", default=False,
+                            help="start spider")
+        parser.add_argument('--max-job-count', action="store", default=0,
+                            help="update max job count")
+        parser.add_argument('--wait', action="store", default=0,
+                            help="update wait")
+        parser.add_argument('-p', '--project-name',
+                            action="store", dest="p", required=False,
+                            help="project module name")
+        parser.add_argument('-H', '--host', action="store", dest="h",
+                            default='localhost', required=False,
+                            help="mongodb host")
+        parser.add_argument('-P', '--port', action="store", dest="port",
+                            default=27017, required=False,
+                            help="mongodb port")
+        parser.add_argument('-d', '--db', action="store", dest="db",
+                            default='spiderdb', required=False,
+                            help="mongodb db")
         opts, args = parser.parse_args()
 
         m = importlib.import_module('projects.%s' % opts.p)
         response = getattr(m, 'response')
-        db = getattr(m, 'MONGODB')
+        db = {
+            'HOST': args.h,
+            'PORT': int(args.p),
+            'DB': args.db
+        }
 
-        if opts.p and opts.exit:
+        if opts.p and opts.stop:
             update_worker(db, opts.p, 'status', 0)
 
         if opts.p and opts.start:
             update_worker(db, opts.p, 'status', 1)
 
-        elif opts.p and opts.m:
+        elif opts.p and opts.max_job_count:
             update_worker(db, opts.p, 'max_job_count', int(opts.m))
 
-        elif opts.p and opts.w:
+        elif opts.p and opts.wait:
             update_worker(db, opts.p, 'wait', int(opts.w))
 
         else:
@@ -431,9 +442,13 @@ if __name__ == '__main__':
             wait = getattr(m, 'WAIT')
             url = getattr(m, 'BASE_URL')
             interval = getattr(m, 'INTERVAL')
-            redis = getattr(m, 'REDIS')
+            redis = {
+                'HOST': rq.REDIS_HOST,
+                'PORT': rq.REDIS_PORT,
+                'DB': rq.REDIS_DB
+            }
             proxy = getattr(m, 'PROXY')
-            projects.enqueue(redis, opts.q, opts.p, db, max_job_count,
+            projects.enqueue(redis, opts.p, opts.p, db, max_job_count,
                              interval, wait, [url], response, proxy=proxy)
 
     except:
