@@ -10,46 +10,6 @@ import optparse
 import configparser
 
 
-config = configparser.ConfigParser()
-config.read('.aws/config')
-
-az = {
-    'b': ['ap-northeast-1b'],
-    'c': ['ap-northeast-1c']
-}
-subnet = {
-    'b': 'subnet-4654242f',
-    'c': 'subnet-11532378'
-}
-try:
-    aws_access_key_id = config.get('default', 'aws_access_key_id')
-    aws_secret_access_key = config.get('default', 'aws_secret_access_key')
-    region_name = config.get('default', 'region_name')
-    price = config.get('default', 'price')
-    instance_type = config.get('default', 'instance_type')
-    image_id = config.get('default', 'image_id')
-    availability_zone_group = config.get('default', 'availability_zone_group')
-    key_name = config.get('default', 'key_name')
-    security_group_ids = config.get('default', 'security_group_ids')
-    tag_name = config.get('default', 'tag_name')
-except:
-    print 'Please create .aws/config and add these configs'
-    print '$ mkdir .aws'
-    print '$ cat <<EOF > .aws/config'
-    print 'aws_access_key_id = <aws_access_key_id>'
-    print 'aws_secret_access_key = <aws_secret_access_key>'
-    print 'region_name = ap-northeast-1'
-    print 'price = 0.5'
-    print 'image_id = ami-13527d7d'
-    print 'instance_type = m3.medium'
-    print 'availability_zone_group = ["ap-northeast-1b"]'
-    print 'key_name = proxy'
-    print 'security_group_ids = ["sg-22d52b22"]'
-    print 'tag_name = pub-proxy-0'
-    print 'EOF'
-    sys.exit(1)
-
-
 def update_worker(db, pname, proxy):
     mongo = MongoClient(db['HOST'], db['PORT'])
     db = mongo[db['DB']]
@@ -107,6 +67,10 @@ def main(pname, db, add_proxy=False):
 
 if __name__ == '__main__':
     parser = optparse.OptionParser()
+    parser.add_option('-c', '--config',
+                      action="store", dest="c",
+                      default='.aws/config',
+                      help="aws config")
     parser.add_option('-p', '--project-name',
                       action="store", dest="p",
                       help="project module name")
@@ -114,6 +78,36 @@ if __name__ == '__main__':
                       dest="add", default=False,
                       help="add new proxy")
     opts, args = parser.parse_args()
+    config = configparser.ConfigParser()
+    config.read(opts.c)
+    try:
+        aws_access_key_id = config.get('default', 'aws_access_key_id')
+        aws_secret_access_key = config.get('default', 'aws_secret_access_key')
+        region_name = config.get('default', 'region_name')
+        price = config.get('default', 'price')
+        instance_type = config.get('default', 'instance_type')
+        image_id = config.get('default', 'image_id')
+        availability_zone_group = config.get('default', 'availability_zone_group')
+        key_name = config.get('default', 'key_name')
+        security_group_ids = config.get('default', 'security_group_ids')
+        tag_name = config.get('default', 'tag_name')
+    except:
+        print 'Please create .aws/config and add these configs'
+        print '$ mkdir .aws'
+        print '$ cat <<EOF > .aws/config'
+        print 'aws_access_key_id = <aws_access_key_id>'
+        print 'aws_secret_access_key = <aws_secret_access_key>'
+        print 'region_name = ap-northeast-1'
+        print 'price = 0.5'
+        print 'image_id = ami-13527d7d'
+        print 'instance_type = m3.medium'
+        print 'availability_zone_group = ["ap-northeast-1b"]'
+        print 'key_name = proxy'
+        print 'security_group_ids = ["sg-22d52b22"]'
+        print 'tag_name = pub-proxy-0'
+        print 'EOF'
+        sys.exit(1)
+
     m = importlib.import_module('projects.%s' % opts.p)
     db = getattr(m, 'MONGODB')
     main(opts.p, db, add_proxy=opts.add)
