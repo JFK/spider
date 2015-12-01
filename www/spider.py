@@ -13,10 +13,15 @@ import logging
 import importlib
 from pymongo import MongoClient, DESCENDING
 from datetime import datetime, timedelta
+from proxy import select_proxy
 import projects
 
 logging.basicConfig(level=logging.INFO)
-USERAGENT = 'WWW-Spider/1.0'
+USERAGENTS = []
+with open('./useragents.txt') as fp:
+    for line in fp:
+        USERAGENTS.append(line.rstrip())
+USERAGENT = random.choice(USERAGENTS)
 
 
 def update_worker(db, pname, field, val):
@@ -25,6 +30,7 @@ def update_worker(db, pname, field, val):
     cond = {'pname': pname}
     sets = {'$set': {field: val}}
     getattr(db, 'worker').update(cond, sets)
+    logging.info(getattr(db, 'worker').find_one(cond))
 
 
 class SpiderError(Exception):
@@ -53,9 +59,9 @@ class Spider(object):
     }
 
     def __init__(self, redis, qname, pname, db, max_job_count=1,
-                 wait=1, interval=86400, encoding='utf8', proxy=None):
+                 wait=1, interval=86400, encoding='utf8', debug=False):
+        self._debug = debug
         self._redis = redis
-        self._proxy = proxy
         self._cookies = {}
         self._referer = None
         self._headers = {}
@@ -72,10 +78,9 @@ class Spider(object):
                 'db': db,
                 'redis': redis,
                 'qname': qname,
-                'useragent': USERAGENT,
                 'status': 1,
-                'proxy': [proxy],
                 'max_job_count': max_job_count,
+                'headers': {},
                 'cookies': {},
                 'wait': wait,
                 'jobs': [],
@@ -96,7 +101,6 @@ class Spider(object):
         logging.info('worker _id: ObjectId("%s")' % self._id)
 
     def create_index(self):
-        self.proxy.create_index([("http", DESCENDING)], background=True)
         self.worker.create_index([("pname", DESCENDING)], background=True)
         self.spider.create_index([("pname", DESCENDING)], background=True)
         self.spider.create_index([("url", DESCENDING)], background=True)
@@ -126,12 +130,6 @@ class Spider(object):
         return self._redis
 
     @property
-    def proxy(self):
-        db = getattr(self.db_conn, 'proxy')
-        p = map(lambda doc: doc, db.data.find({}))
-        return random.choice(p) if len(p) else self._proxy
-
-    @property
     def spider(self):
         return getattr(self.db_conn, 'spider')
 
@@ -152,17 +150,31 @@ class Spider(object):
 
     @property
     def useragent(self):
-        return self.worker_one('useragent')
+        return random.choice(USERAGENTS)
 
     @property
     def headers(self):
-        self._headers = {
-            'User-agent': self.useragent,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'ja,en;q=0.7,en-us;q=0.3',
-        }
-        self._headers.update({'referer': self.referer})
-        self._headers.update({'encoding': self.encoding})
+        # self._headers = {}
+        self._headers = self.worker_one('headers', use_db=True)
+        xheaders = ["X-ASN", "Content-Length", "Via", "X-ASC",
+                    "Vary", "X-Request-Id", "X-XSS-Protection",
+                    "X-Content-Type-Options", "X-Runtime", "ETag",
+                    "Cache-Control", "Status", "X-Varnish", "Set-Cookie",
+                    "Accept-Ranges", "X-Chst", "X-RealServer",
+                    "Date", "Age", "Server", "Connection",
+                    "X-Frame-Options", "Content-Type", "Transfer-Encoding"]
+        for x in xheaders:
+            if x in self._headers:
+                del self._headers[x]
+
+        if self.referer:
+            self._headers.update({'Referer': self.referer})
+
+        self._headers.update({'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'})
+        self._headers.update({'Accept-Language': 'ja,en;q=0.7,en-us;q=0.3'})
+        self._headers.update({'Accept-Encoding': 'gzip, deflate'})
+        self._headers.update({'User-Agent': self.useragent})
+        self._headers.update({'Connection': 'keep-alive'})
         return self._headers
 
     @property
@@ -260,6 +272,10 @@ class Spider(object):
         data = {'status': status}
         self.worker_update(data)
 
+    def worker_headers(self, headers):
+        data = {'headers': headers}
+        self.worker_update(data)
+
     def worker_max_job_count(self, count):
         self._max_job_count = count
         data = {'max_job_count': count}
@@ -312,16 +328,24 @@ class Spider(object):
                 raise SpiderError(err)
             self.referer = referer
             logging.info('referer... %s' % referer)
+            proxies = select_proxy()
             logging.info('proxy...')
-            logging.info(self.proxy)
-            resp = requests.get(
-                url,
-                headers=self.headers,
-                cookies=self.cookies,
-                proxies=self.proxy
-            )
+            logging.info(proxies)
+            logging.info('headers...')
+            h = self.headers
+            logging.info(h)
+            logging.info('cookies...')
+            c = self.cookies
+            logging.info(c)
+            resp = requests.get(url, headers=h, cookies=c, proxies=proxies)
             resp.encoding = self.encoding
             self.worker_cookies(resp.cookies)
+            resp.headers.update({'Referer': url})
+            self.worker_headers(resp.headers)
+            logging.info('..............')
+            logging.info(resp.headers)
+            logging.info(resp.status_code)
+            logging.info('..............')
             if resp.status_code != 200:
                 logging.info('not 200...')
                 err = {
@@ -337,7 +361,7 @@ class Spider(object):
                 kwargs = dict(
                     pname=self.pname,
                     url=url,
-                    headers=self.headers,
+                    headers=resp.headers,
                     text=resp.text,
                     encoding=self.encoding,
                     response=response,
@@ -354,7 +378,6 @@ class Spider(object):
                 kwargs.update({'option': opt})
                 self.visited(url, kwargs)
                 logging.info('urls... %d', len(urls))
-
                 if not urls:
                     logging.info('not urls...')
                     err = {
@@ -370,14 +393,16 @@ class Spider(object):
                                                     self.max_job_count))
                 urls = self.clean_urls(urls)
                 logging.info('enqueue urls... %d', len(urls))
-                job = projects.enqueue(self.redis, self.qname, self.pname,
-                                       self.db, self.max_job_count,
-                                       self.interval, self.wait, urls,
-                                       response, referer=self.referer,
-                                       tag=tag, proxy=self.proxy)
-                logging.info('done... %d %s' % (job.result, url))
+                if not self._debug:
+                    projects.enqueue(self.redis, self.qname, self.pname,
+                                     self.db, self.max_job_count,
+                                     self.interval, self.wait, urls,
+                                     response, referer=self.referer,
+                                     tag=tag)
+                logging.info('done!')
 
-        except:
+        except Exception, e:
+            logging.warning(str(e))
             importlib.import_module('mylib.logger').sentry()
 
         finally:
@@ -399,6 +424,9 @@ if __name__ == '__main__':
         parser.add_argument('--start', action="store_true",
                             dest="start", default=False,
                             help="start spider")
+        parser.add_argument('--debug', action="store_true",
+                            dest="debug", default=False,
+                            help="start spider")
         parser.add_argument('--max-job-count', action="store", default=0,
                             help="update max job count")
         parser.add_argument('--wait', action="store", default=0,
@@ -415,29 +443,30 @@ if __name__ == '__main__':
         parser.add_argument('-d', '--db', action="store", dest="db",
                             default='spiderdb', required=False,
                             help="mongodb db")
-        opts, args = parser.parse_args()
+        args = parser.parse_args()
 
-        m = importlib.import_module('projects.%s' % opts.p)
+        m = importlib.import_module('projects.%s' % args.p)
         response = getattr(m, 'response')
         db = {
             'HOST': args.h,
-            'PORT': int(args.p),
+            'PORT': int(args.port),
             'DB': args.db
         }
 
-        if opts.p and opts.stop:
-            update_worker(db, opts.p, 'status', 0)
+        if args.p and args.stop:
+            update_worker(db, args.p, 'status', 0)
 
-        if opts.p and opts.start:
-            update_worker(db, opts.p, 'status', 1)
+        if args.p and args.start:
+            update_worker(db, args.p, 'status', 1)
 
-        elif opts.p and opts.max_job_count:
-            update_worker(db, opts.p, 'max_job_count', int(opts.m))
+        elif args.p and args.max_job_count:
+            update_worker(db, args.p, 'max_job_count', int(args.max_job_count))
 
-        elif opts.p and opts.wait:
-            update_worker(db, opts.p, 'wait', int(opts.w))
+        elif args.p and args.wait:
+            update_worker(db, args.p, 'wait', int(args.wait))
 
         else:
+
             max_job_count = getattr(m, 'MAX_JOB_COUNT')
             wait = getattr(m, 'WAIT')
             url = getattr(m, 'BASE_URL')
@@ -447,9 +476,8 @@ if __name__ == '__main__':
                 'PORT': rq.REDIS_PORT,
                 'DB': rq.REDIS_DB
             }
-            proxy = getattr(m, 'PROXY')
-            projects.enqueue(redis, opts.p, opts.p, db, max_job_count,
-                             interval, wait, [url], response, proxy=proxy)
+            projects.enqueue(redis, args.p, args.p, db, max_job_count,
+                             interval, wait, [url], response, debug=args.debug)
 
     except:
         importlib.import_module('mylib.logger').sentry()

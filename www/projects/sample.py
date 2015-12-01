@@ -9,7 +9,6 @@ BASE_URL = 'http://snapdish.co/books/'
 MAX_JOB_COUNT = 1
 WAIT = 1
 INTERVAL = 86400
-PROXY = []
 
 
 def keyword(text):
