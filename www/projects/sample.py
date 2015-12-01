@@ -7,18 +7,10 @@ import logging
 # from projects import queue as q
 
 BASE_URL = 'http://snapdish.co/books/'
-
 MAX_JOB_COUNT = 1
-WAIT = 1  # seconds
-INTERVAL = 86400  # 1 day
-PROXY = {
-    # 'http': 'http://0.0.0.0:8080'
-}
-REDIS = {
-    'HOST': rq.REDIS_HOST,
-    'PORT': rq.REDIS_PORT,
-    'DB': rq.REDIS_DB
-}
+WAIT = 1
+INTERVAL = 86400
+PROXY = []
 MONGODB = {
     'HOST': 'localhost',
     'PORT': 27017,
