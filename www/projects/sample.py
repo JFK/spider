@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import rq_settings as rq
 import re
 import logging
 # from projects import queue as q
@@ -11,11 +10,6 @@ MAX_JOB_COUNT = 1
 WAIT = 1
 INTERVAL = 86400
 PROXY = []
-MONGODB = {
-    'HOST': 'localhost',
-    'PORT': 27017,
-    'DB': 'spiderdb'
-}
 
 
 def keyword(text):
