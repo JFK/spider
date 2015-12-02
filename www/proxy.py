@@ -45,10 +45,12 @@ def select_proxy():
     return random.choice(map(lambda doc: doc, db.proxy.find({})))
 
 
-def db_update_proxy(proxy):
-    cond = {'http': proxy['http']}
-    sets = {'$set': proxy}
-    getattr(db, 'proxy').update(cond, sets, upsert=True)
+def db_update_proxy(proxies):
+    getattr(db, 'proxy').remove({})
+    for proxy in proxies:
+        cond = {'http': proxy['http']}
+        sets = {'$set': proxy}
+        getattr(db, 'proxy').update(cond, sets, upsert=True)
     for x in getattr(db, 'proxy').find({}):
         print x['http']
 
@@ -83,6 +85,7 @@ def add_proxy():
 
 
 def list_proxy():
+    print 'list proxy...'
     all_instances = ec2.get_all_instances()
     instance_ids = []
     for inst in all_instances:
@@ -92,7 +95,13 @@ def list_proxy():
                     instance_ids.append(x.id)
                     print x.tags.get('Name'), x.id, x._state
     if not instance_ids:
-        print 'not found...'
+        print 'not found instance_ids...'
+        for x in range(0, 2):
+            add_proxy()
+
+    elif instance_ids and len(instance_ids) != 2:
+        for x in range(0, 2-len(instance_ids)):
+            add_proxy()
     else:
         update_proxy()
 
@@ -168,6 +177,7 @@ def delete_proxy(tag_name):
 def update_proxy():
     print 'updating proxy data...'
     all_instances = ec2.get_all_instances()
+    proxies = []
     for inst in all_instances:
         for x in inst.instances:
             if re.match(TAG_NAME_PREFIX, x.tags.get('Name')):
@@ -177,7 +187,8 @@ def update_proxy():
                     proxy = {
                         'http': 'http://%s:8080' % url
                     }
-                    db_update_proxy(proxy)
+                    proxies.append(proxy)
+    db_update_proxy(proxies)
 
 
 if __name__ == '__main__':
