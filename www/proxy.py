@@ -14,12 +14,16 @@ import random
 import re
 
 TAG_NAME_PREFIX = 'pub-proxy'
-mongo = MongoClient()
-db = mongo['proxydb']
+config = configparser.ConfigParser()
+config.read('conf/spider.conf')
+mongo = MongoClient(config.get('mongodb', 'host'),
+                    int(config.get('mongodb', 'port')))
+db = mongo[config.get('mongodb', 'db')]
 
 config = configparser.ConfigParser()
 config.read('.aws/config')
 aws_access_key_id = config.get('default', 'aws_access_key_id')
+
 aws_secret_access_key = config.get('default', 'aws_secret_access_key')
 region_name = config.get('default', 'region_name')
 price = config.get('default', 'price')
@@ -121,6 +125,7 @@ def shutdown_proxy():
             getattr(db, 'proxy').remove({})
         else:
             print 'Aborting...'
+
 
 def reload_proxy():
     print 'reloadng proxy...'

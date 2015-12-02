@@ -15,18 +15,29 @@ from pymongo import MongoClient, DESCENDING
 from datetime import datetime, timedelta
 from proxy import select_proxy
 import projects
+import configparser
+
+config = configparser.ConfigParser()
+config.read('conf/spider.conf')
 
 logging.basicConfig(level=logging.INFO)
 USERAGENTS = []
-with open('./useragents.txt') as fp:
-    for line in fp:
-        USERAGENTS.append(line.rstrip())
+try:
+    with open(config.get('common', 'useragents')) as fp:
+        for line in fp:
+            USERAGENTS.append(line.rstrip())
+except:
+    USERAGENTS.append('WWW-spider/1.0')
+
 USERAGENT = random.choice(USERAGENTS)
+DB = dict(HOST=config.get('mongodb', 'host'),
+          PORT=int(config.get('mongodb', 'port')),
+          DB=config.get('mongodb', 'db'))
 
 
-def update_worker(db, pname, field, val):
-    mongo = MongoClient(db['HOST'], db['PORT'])
-    db = mongo[db['DB']]
+def update_worker(pname, field, val):
+    mongo = MongoClient(DB['HOST'], DB['PORT'])
+    db = mongo[DB['DB']]
     cond = {'pname': pname}
     sets = {'$set': {field: val}}
     getattr(db, 'worker').update(cond, sets)
@@ -58,7 +69,7 @@ class Spider(object):
         'at': datetime.utcnow()
     }
 
-    def __init__(self, redis, qname, pname, db, max_job_count=1,
+    def __init__(self, redis, pname, db, max_job_count=1,
                  wait=1, interval=86400, encoding='utf8', debug=False):
         self._debug = debug
         self._redis = redis
@@ -66,7 +77,6 @@ class Spider(object):
         self._referer = None
         self._headers = {}
         self._db = db
-        self._qname = qname
         self._pname = pname
         self._db_conn = None
         self._id = None
@@ -77,7 +87,6 @@ class Spider(object):
                 'pname': pname,
                 'db': db,
                 'redis': redis,
-                'qname': qname,
                 'status': 1,
                 'max_job_count': max_job_count,
                 'headers': {},
@@ -205,10 +214,6 @@ class Spider(object):
         return self._dbport
 
     @property
-    def qname(self):
-        return self.worker_one('qname')
-
-    @property
     def status(self):
         return self.worker_one('status')
 
@@ -331,7 +336,6 @@ class Spider(object):
             proxies = select_proxy()
             logging.info('proxy...')
             logging.info(proxies)
-            logging.info('headers...')
             h = self.headers
             logging.info(h)
             logging.info('cookies...')
@@ -342,12 +346,14 @@ class Spider(object):
             self.worker_cookies(resp.cookies)
             resp.headers.update({'Referer': url})
             self.worker_headers(resp.headers)
-            logging.info('..............')
+            logging.info('resp.headers...')
             logging.info(resp.headers)
-            logging.info(resp.status_code)
-            logging.info('..............')
             if resp.status_code != 200:
-                logging.info('not 200...')
+                logging.info('..............')
+                logging.info('..............')
+                logging.info('error not 200... %d' % resp.status_code)
+                logging.info('..............')
+                logging.info('..............')
                 err = {
                     'code': resp.status_code,
                     'url': url,
@@ -394,11 +400,10 @@ class Spider(object):
                 urls = self.clean_urls(urls)
                 logging.info('enqueue urls... %d', len(urls))
                 if not self._debug:
-                    projects.enqueue(self.redis, self.qname, self.pname,
-                                     self.db, self.max_job_count,
-                                     self.interval, self.wait, urls,
-                                     response, referer=self.referer,
-                                     tag=tag)
+                    projects.enqueue(self.redis, self.pname, self.db,
+                                     self.max_job_count, self.interval,
+                                     self.wait, urls, response, 
+                                     referer=self.referer, tag=tag)
                 logging.info('done!')
 
         except Exception, e:
@@ -426,44 +431,31 @@ if __name__ == '__main__':
                             help="start spider")
         parser.add_argument('--debug', action="store_true",
                             dest="debug", default=False,
-                            help="start spider")
+                            help="debug spider")
         parser.add_argument('--max-job-count', action="store", default=0,
                             help="update max job count")
         parser.add_argument('--wait', action="store", default=0,
                             help="update wait")
         parser.add_argument('-p', '--project-name',
-                            action="store", dest="p", required=False,
+                            action="store", dest="p", required=True,
+                            default='smaple',
                             help="project module name")
-        parser.add_argument('-H', '--host', action="store", dest="h",
-                            default='localhost', required=False,
-                            help="mongodb host")
-        parser.add_argument('-P', '--port', action="store", dest="port",
-                            default=27017, required=False,
-                            help="mongodb port")
-        parser.add_argument('-d', '--db', action="store", dest="db",
-                            default='spiderdb', required=False,
-                            help="mongodb db")
         args = parser.parse_args()
 
         m = importlib.import_module('projects.%s' % args.p)
         response = getattr(m, 'response')
-        db = {
-            'HOST': args.h,
-            'PORT': int(args.port),
-            'DB': args.db
-        }
 
         if args.p and args.stop:
-            update_worker(db, args.p, 'status', 0)
+            update_worker(args.p, 'status', 0)
 
         if args.p and args.start:
-            update_worker(db, args.p, 'status', 1)
+            update_worker(args.p, 'status', 1)
 
         elif args.p and args.max_job_count:
-            update_worker(db, args.p, 'max_job_count', int(args.max_job_count))
+            update_worker(args.p, 'max_job_count', int(args.max_job_count))
 
         elif args.p and args.wait:
-            update_worker(db, args.p, 'wait', int(args.wait))
+            update_worker(args.p, 'wait', int(args.wait))
 
         else:
 
@@ -476,8 +468,8 @@ if __name__ == '__main__':
                 'PORT': rq.REDIS_PORT,
                 'DB': rq.REDIS_DB
             }
-            projects.enqueue(redis, args.p, args.p, db, max_job_count,
-                             interval, wait, [url], response, debug=args.debug)
+            projects.enqueue(redis, args.p, DB, max_job_count, interval,
+                             wait, [url], response, debug=args.debug)
 
     except:
         importlib.import_module('mylib.logger').sentry()

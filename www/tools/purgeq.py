@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 import redis
-import sys
-r = redis.StrictRedis()
-qname = "rq:queue:" + sys.argv[1]
+import rq_settings as rq
+r = redis.StrictRedis(host=rq.REDIS_HOST, port=rq.REDIS_PORT, db=rq.REDIS_DB)
+qname = "rq:queue:spider"
 
 
 def purgeq(r, qname):
