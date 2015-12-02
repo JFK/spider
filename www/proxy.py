@@ -83,7 +83,7 @@ def list_proxy():
     instance_ids = []
     for inst in all_instances:
         for x in inst.instances:
-            if re.match(TAG_NAME_PREFIX, x.tags.get('Name')):
+            if x.tags.get('Name') and re.match(TAG_NAME_PREFIX, x.tags.get('Name')):
                 if 'running' in str(x._state):
                     instance_ids.append(x.id)
                     print x.tags.get('Name'), x.id, x._state
@@ -110,10 +110,17 @@ def shutdown_proxy():
     if not instance_ids:
         print 'not found any proxy...'
     else:
-        print 'terminating instances... %s' % ", ".join(instance_ids)
-        ec2.terminate_instances(instance_ids)
-        getattr(db, 'proxy').remove({})
+        print "Are you sure to terminate the instances bellow: [Y/n]"
+        print 'Instances... %s' % ", ".join(instance_ids)
 
+        YorN = sys.stdin.readline().strip()
+        if not YorN or 'y' == YorN.lower():
+            sys.stdout.write('Terminating....')
+            sys.stdout.flush()
+            ec2.terminate_instances(instance_ids)
+            getattr(db, 'proxy').remove({})
+        else:
+            print 'Aborting...'
 
 def reload_proxy():
     print 'reloadng proxy...'
@@ -174,12 +181,12 @@ if __name__ == '__main__':
         parser.add_argument('--reload', action="store_true",
                             dest="reload", default=False,
                             help="reload proxy")
-        parser.add_argument('--add', action="store_true",
-                            dest="add", default=False,
-                            help="add new proxy")
         parser.add_argument('--shutdown', action="store_true",
                             dest="shutdown", default=False,
                             help="shutdown all proxies")
+        parser.add_argument('--add', action="storee",
+                            dest="add", default=0, required=False,
+                            help="add new proxy")
         parser.add_argument('--delete', action="store",
                             default=None, required=False,
                             help="delete proxy")
@@ -194,7 +201,8 @@ if __name__ == '__main__':
             delete_proxy(args.delete)
 
         elif args.add:
-            add_proxy()
+            for x in range(0, int(args.add)):
+                add_proxy()
 
         else:
             list_proxy()

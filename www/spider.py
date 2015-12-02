@@ -150,7 +150,7 @@ class Spider(object):
 
     @property
     def useragent(self):
-        return random.choice(USERAGENTS)
+        return USERAGENT
 
     @property
     def headers(self):
