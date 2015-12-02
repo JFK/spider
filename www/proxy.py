@@ -184,7 +184,7 @@ if __name__ == '__main__':
         parser.add_argument('--shutdown', action="store_true",
                             dest="shutdown", default=False,
                             help="shutdown all proxies")
-        parser.add_argument('--add', action="storee",
+        parser.add_argument('--add', action="store",
                             dest="add", default=0, required=False,
                             help="add new proxy")
         parser.add_argument('--delete', action="store",
