@@ -215,9 +215,14 @@ class Spider(object):
         return self.worker_one('pname')
 
     @property
+    def debug(self):
+        return self._debug
+
+    @property
     def dbname(self):
         return self._dbname
 
+    @property
     def dbhost(self):
         return self._dbhost
 
@@ -398,32 +403,26 @@ class Spider(object):
                 self.visited(url, kwargs)
                 logging.info('urls... %d', len(urls))
                 if not urls:
-                    logging.info('not urls...')
-                    err = {
-                        'code': 500,
-                        'url': url,
-                        'msg': 'not urls',
-                        'at': datetime.utcnow()
-                    }
-                    raise SpiderError(err)
-
-                i = 0
-                while len(self.jobs) > self.max_job_count:
-                    if i == 10:
-                        break
-                    msg = 'busy... %d > %d' % \
-                        (len(self.jobs), self.max_job_count)
-                    i += 1
-                    self.sleep(msg)
-                urls = self.clean_urls(urls)
-                logging.info('enqueue urls... %d', len(urls))
-                if not self._debug and i == 0:
-                    projects.enqueue(self.redis, self.pname, self.db,
-                                     self.max_job_count, self.interval,
-                                     self.wait, urls, response,
-                                     referer=self.referer,
-                                     qname=self.qname, tag=tag)
-                logging.info('done!')
+                    logging.info('No urls...')
+                else:
+                    i = 0
+                    while len(self.jobs) > self.max_job_count:
+                        if i == 10:
+                            break
+                        msg = 'busy... %d > %d' % \
+                            (len(self.jobs), self.max_job_count)
+                        i += 1
+                        self.sleep(msg)
+                    urls = self.clean_urls(urls)
+                    logging.info('enqueue urls... %d', len(urls))
+                    if i == 0:
+                        projects.enqueue(self.redis, self.pname, self.db,
+                                         self.max_job_count, self.interval,
+                                         self.wait, urls, response,
+                                         referer=self.referer,
+                                         qname=self.qname, tag=tag,
+                                         debug=self.debug)
+                    logging.info('done!')
 
         except Exception, e:
             logging.warning(str(e))
