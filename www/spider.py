@@ -16,11 +16,14 @@ from datetime import datetime, timedelta
 from proxy import select_proxy
 import projects
 import configparser
+from ast import literal_eval
 
 config = configparser.ConfigParser()
 config.read('conf/spider.conf')
 
-logging.basicConfig(level=logging.INFO)
+log_level = getattr(logging, config.get('common', 'log_level'))
+logging.basicConfig(level=log_level)
+
 USERAGENTS = []
 try:
     with open(config.get('common', 'useragents')) as fp:
@@ -30,6 +33,10 @@ except:
     USERAGENTS.append('WWW-spider/1.0')
 
 USERAGENT = random.choice(USERAGENTS)
+
+SAVE_TEXT = literal_eval(config.get('common', 'save_text'))
+SAVE_HEADERS = literal_eval(config.get('common', 'save_headers'))
+
 DB = dict(HOST=config.get('mongodb', 'host'),
           PORT=int(config.get('mongodb', 'port')),
           DB=config.get('mongodb', 'db'))
@@ -69,8 +76,10 @@ class Spider(object):
         'at': datetime.utcnow()
     }
 
-    def __init__(self, redis, pname, db, max_job_count=1,
-                 wait=1, interval=86400, encoding='utf8', debug=False):
+    def __init__(self, redis, pname, db, max_job_count=1, wait=1,
+                 qname='spider', interval=86400, encoding='utf8',
+                 debug=False):
+        self._qname = qname
         self._debug = debug
         self._redis = redis
         self._cookies = {}
@@ -126,7 +135,6 @@ class Spider(object):
                 logging.info('not_visited... %s' % url)
                 self.start(url)
                 yield self.main(url, response, referer=referer, tag=tag)
-                referer = url
 
     def run(self, urls, response, referer=None, tag=0):
         for url in self.get(urls, response, referer=referer, tag=tag):
@@ -160,6 +168,10 @@ class Spider(object):
     @property
     def useragent(self):
         return USERAGENT
+
+    @property
+    def qname(self):
+        return self._qname
 
     @property
     def headers(self):
@@ -215,19 +227,19 @@ class Spider(object):
 
     @property
     def status(self):
-        return self.worker_one('status')
+        return self.worker_one('status', use_db=True)
 
     @property
     def max_job_count(self):
-        return self.worker_one('max_job_count')
+        return self.worker_one('max_job_count', use_db=True)
 
     @property
     def wait(self):
-        return self.worker_one('wait')
+        return self.worker_one('wait', use_db=True)
 
     @property
     def jobs(self):
-        return self.worker_one('jobs')
+        return self.worker_one('jobs', use_db=True)
 
     @property
     def interval(self):
@@ -257,7 +269,7 @@ class Spider(object):
 
     def end(self, url):
         self.pull_job(url)
-        self.sleep('end %s' % url, self.wait)
+        self.sleep('end %s' % url)
 
     def start(self, url):
         logging.info('start... %s' % url)
@@ -266,7 +278,8 @@ class Spider(object):
     def worker_one(self, field_name, use_db=False):
         if use_db:
             return self.worker.find_one({'pname': self.pname})[field_name]
-        return self.project_worker[field_name]
+        else:
+            return self.project_worker[field_name]
 
     def worker_cookies(self, c):
         c = requests.utils.dict_from_cookiejar(c)
@@ -348,12 +361,12 @@ class Spider(object):
             self.worker_headers(resp.headers)
             logging.info('resp.headers...')
             logging.info(resp.headers)
-            if resp.status_code != 200:
-                logging.info('..............')
-                logging.info('..............')
-                logging.info('error not 200... %d' % resp.status_code)
-                logging.info('..............')
-                logging.info('..............')
+            if resp.status_code == 404:
+                # do nothing
+                logging.info('Not found... %d' % resp.status_code)
+
+            elif resp.status_code != 200:
+                logging.info('Not 200... %d' % resp.status_code)
                 err = {
                     'code': resp.status_code,
                     'url': url,
@@ -367,8 +380,8 @@ class Spider(object):
                 kwargs = dict(
                     pname=self.pname,
                     url=url,
-                    headers=resp.headers,
-                    text=resp.text,
+                    text=resp.text if SAVE_TEXT else '',
+                    headers=resp.headers if SAVE_HEADERS else {},
                     encoding=self.encoding,
                     response=response,
                     scheme=parsed.scheme,
@@ -394,16 +407,22 @@ class Spider(object):
                     }
                     raise SpiderError(err)
 
+                i = 0
                 while len(self.jobs) > self.max_job_count:
-                    self.sleep('busy... %d > %d' % (len(self.jobs),
-                                                    self.max_job_count))
+                    if i == 10:
+                        break
+                    msg = 'busy... %d > %d' % \
+                        (len(self.jobs), self.max_job_count)
+                    i += 1
+                    self.sleep(msg)
                 urls = self.clean_urls(urls)
                 logging.info('enqueue urls... %d', len(urls))
-                if not self._debug:
+                if not self._debug and i == 0:
                     projects.enqueue(self.redis, self.pname, self.db,
                                      self.max_job_count, self.interval,
-                                     self.wait, urls, response, 
-                                     referer=self.referer, tag=tag)
+                                     self.wait, urls, response,
+                                     referer=self.referer,
+                                     qname=self.qname, tag=tag)
                 logging.info('done!')
 
         except Exception, e:
@@ -413,12 +432,10 @@ class Spider(object):
         finally:
             return url
 
-    def sleep(self, name, wait):
-        logging.info('%s sec sleeping at %s...' % (wait, name))
-        rnd1 = random.choice("2345")
-        rnd2 = random.choice("6789")
-        sleep(float(rnd2)/float(rnd1))
-        sleep(wait)
+    def sleep(self, name):
+        rnd = float(random.random()) * float(self.wait)
+        logging.info('Sleeping %f at %s...' % (rnd, name))
+        sleep(rnd)
 
 if __name__ == '__main__':
     try:
@@ -436,6 +453,10 @@ if __name__ == '__main__':
                             help="update max job count")
         parser.add_argument('--wait', action="store", default=0,
                             help="update wait")
+        parser.add_argument('-q', '--queue-name',
+                            action="store", dest="q", required=False,
+                            default='spider',
+                            help="project module name")
         parser.add_argument('-p', '--project-name',
                             action="store", dest="p", required=True,
                             default='smaple',
@@ -469,7 +490,8 @@ if __name__ == '__main__':
                 'DB': rq.REDIS_DB
             }
             projects.enqueue(redis, args.p, DB, max_job_count, interval,
-                             wait, [url], response, debug=args.debug)
+                             wait, [url], response, qname=args.q,
+                             debug=args.debug)
 
     except:
         importlib.import_module('mylib.logger').sentry()

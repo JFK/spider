@@ -17,8 +17,8 @@ def queue(redis):
     return Queue('spider', connection=conn)
 
 
-def enqueue(redis, pname, db, max_job_count, interval,
-            wait, urls, response, referer=None, tag=0, debug=False):
+def enqueue(redis, pname, db, max_job_count, interval, wait, urls,
+            response, qname='spider', referer=None, tag=0, debug=False):
     q = queue(redis)
     if debug:
         release(redis, pname, db, max_job_count, interval,
@@ -28,8 +28,8 @@ def enqueue(redis, pname, db, max_job_count, interval,
                          interval, wait, urls, response, referer, tag)
 
 
-def release(redis, pname, db, max_job_count, interval,
-            wait, urls, response, referer, tag, debug=False):
+def release(redis, pname, db, max_job_count, interval, wait, urls,
+            response, referer, tag, qname='spider', debug=False):
     s = Spider(redis, pname, db, max_job_count=max_job_count,
-               interval=interval, wait=wait, debug=debug)
+               qname=qname, interval=interval, wait=wait, debug=debug)
     s.run(urls, response, referer=referer, tag=tag)
