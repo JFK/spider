@@ -24,6 +24,8 @@ config.read('conf/spider.conf')
 log_level = getattr(logging, config.get('common', 'log_level'))
 logging.basicConfig(level=log_level)
 
+debug = False
+
 USERAGENTS = []
 try:
     with open(config.get('common', 'useragents')) as fp:
@@ -488,9 +490,10 @@ if __name__ == '__main__':
                 'PORT': rq.REDIS_PORT,
                 'DB': rq.REDIS_DB
             }
+            debug = args.debug
             projects.enqueue(redis, args.p, DB, max_job_count, interval,
                              wait, [url], response, qname=args.q,
                              debug=args.debug)
 
     except:
-        importlib.import_module('mylib.logger').sentry()
+        importlib.import_module('mylib.logger').sentry(debug=debug)
